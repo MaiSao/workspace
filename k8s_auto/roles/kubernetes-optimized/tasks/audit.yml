@@ -1,0 +1,11 @@
+---
+# tasks file for roles/kubernetes-optimized
+- name: ensure audit policy file is not a directory (?)
+  shell: |
+    rm -rf /etc/kubernetes/audit-policy.yaml
+    mkdir -p /etc/kubernetes
+
+- name: generate audit polcicy config
+  template:
+    src: audit-policy.yaml.j2
+    dest: /etc/kubernetes/audit-policy.yaml

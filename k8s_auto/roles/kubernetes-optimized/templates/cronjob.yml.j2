@@ -1,0 +1,61 @@
+# Create service account
+---
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: restart-ds
+  namespace: kube-system
+
+# Create Role and Role binding
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: restart-ds
+  namespace: kube-system
+rules:
+  - apiGroups: ["apps", "extensions"]
+    resources: ["daemonsets"]
+    resourceNames: ["calico-node", "whereabouts", "kube-multus-ds-amd64"]
+    verbs: ["get", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: restart-ds
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: restart-ds
+subjects:
+  - kind: ServiceAccount
+    name: restart-ds
+    namespace: kube-system
+
+# Create cronjob
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: restart-ds
+  namespace: kube-system
+spec:
+  concurrencyPolicy: Forbid # Do not run concurrently!
+  schedule: "0 0 1 */6 *"  # Execute every 6 months at midnight on the 1st day of the month
+  jobTemplate:
+    spec:
+      backoffLimit: 2 
+      activeDeadlineSeconds: 600 
+      template:
+        spec:
+          serviceAccountName: restart-ds # Run under the service account created above
+          restartPolicy: Never
+          containers:
+          - name: kubectl
+            image: {{ __registry_prefix }}/bitnami/kubectl:1.30.1 
+            command: ["sh", "-c"]
+            args: 
+            - "kubectl rollout restart daemonset/calico-node && kubectl rollout restart daemonset/whereabouts || true && kubectl rollout restart daemonset/kube-multus-ds-amd64 || true"
+

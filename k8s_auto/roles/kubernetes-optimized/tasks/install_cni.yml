@@ -1,0 +1,30 @@
+---
+- name: install CNI
+  shell: |
+    cat > /root/install-cni.sh <<'EOF'
+    {% if cni_prime == 'calico' or cni_prime is not defined %}
+    kubectl apply -f {{ __bootstrap_dir }}/calico-v3.28.2.yaml
+    kubectl set env daemonset/calico-node -n kube-system \
+              IP_AUTODETECTION_METHOD=cidr={{ ip_autodetection_method_cidr }}
+    {% endif %}
+    {% if cni_prime == 'cilium' and cni_prime is defined %}
+    kubectl apply -f {{ __bootstrap_dir }}/cilium.yaml
+    {% endif %}
+    {% if master_hybrid %}
+    kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
+    {% endif %}
+    {% if multi_network %}
+    kubectl apply -f {{ __bootstrap_dir }}/multus-daemonset_v4.1.3.yaml
+    kubectl apply -f {{ __bootstrap_dir }}/whereabouts_ippools.yaml \
+                  -f {{ __bootstrap_dir }}/whereabouts_ippools-cleaner.yaml \
+                  -f {{ __bootstrap_dir }}/whereabouts_daemonset_install.yaml
+    {% if multus_sriov is defined %}
+    kubectl apply -f {{ __bootstrap_dir }}/sriov_configMap.yaml \
+                  -f {{ __bootstrap_dir }}/whereabouts_daemonset_install.yaml \              
+                  -f {{ __bootstrap_dir }}/whereabouts-net-sriov-bond.yaml
+    {% endif %}
+    {% endif %}
+    kubectl apply -f {{ __bootstrap_dir }}/coredns.yaml
+    kubectl rollout restart deployment/coredns -n kube-system
+    EOF
+    bash /root/install-cni.sh | tee {{ __bootstrap_dir }}/logs/install-cni.{{ __session_time }}.log

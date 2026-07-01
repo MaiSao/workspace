@@ -1,0 +1,5 @@
+---
+- name: check if images are pullable
+  loop: "{{ container_images }}"
+  shell: |
+    crictl pull {{ __registry_prefix }}/{{ item }}

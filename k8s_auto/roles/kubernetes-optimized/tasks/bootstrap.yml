@@ -1,0 +1,16 @@
+---
+- name: generate bootstrap script for nodes
+  tags: ["dryrun"]
+  template:
+    src: bootstrap.sh.j2
+    dest: /root/kubebootstrap.sh
+    mode: '0755'
+- name: execute bootstrap script
+  shell: bash /root/kubebootstrap.sh | tee {{ __bootstrap_dir }}/logs/kubebootstrap.{{ __session_time }}.log
+  when: >
+    __rerun_bootstrap is defined
+- name: generate containerd config file
+  tags: ["dryrun"]
+  template:
+    src: config.toml.j2
+    dest: /etc/containerd/config.toml

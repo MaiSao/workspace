@@ -1,0 +1,76 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etcd-backup-rotate
+  namespace: kube-system
+spec:
+  concurrencyPolicy: Allow
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      creationTimestamp: null
+    spec:
+      completions: 5
+      parallelism: 5
+      template:
+        metadata:
+          creationTimestamp: null
+          labels:
+            task: etcd-backup-rotate
+        spec:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchExpressions:
+                  - key: task
+                    operator: In
+                    values:
+                    - etcd-backup-rotate
+                topologyKey: kubernetes.io/hostname
+          containers:
+          - env:
+            - name: ETCDCTL_API
+              value: "3"
+            image: {{ __registry_prefix }}/registry.k8s.io/etcd-backup:3.5.15
+            imagePullPolicy: IfNotPresent
+            name: etcd-backup-rotate
+            resources:
+              limits:
+                cpu: "4"
+                memory: 8Gi
+              requests:
+                cpu: 100m
+                memory: 2Gi
+            terminationMessagePath: /dev/termination-log
+            terminationMessagePolicy: File
+            volumeMounts:
+            - mountPath: /etc/kubernetes/pki/etcd
+              name: etcd-certs
+              readOnly: true
+            - mountPath: /backup
+              name: backup
+          dnsPolicy: ClusterFirst
+          hostNetwork: true
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: ""
+          restartPolicy: OnFailure
+          schedulerName: default-scheduler
+          securityContext: {}
+          terminationGracePeriodSeconds: 30
+          tolerations:
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/control-plane
+          volumes:
+          - hostPath:
+              path: /etc/kubernetes/pki/etcd
+              type: DirectoryOrCreate
+            name: etcd-certs
+          - hostPath:
+              path: {{ etcd_backup_dir }}
+              type: DirectoryOrCreate
+            name: backup
+  schedule: 0 0 * * *
+  successfulJobsHistoryLimit: 5
+  suspend: false
+  timeZone: Asia/Ho_Chi_Minh

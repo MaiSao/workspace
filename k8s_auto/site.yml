@@ -1,0 +1,9 @@
+---
+- name: Setup masters Nodes
+  hosts: all
+  gather_facts: yes
+  vars_files:
+    - group_vars/image_file.yml 
+    - group_vars/all.yml
+  roles:
+    - role: kubernetes-optimized

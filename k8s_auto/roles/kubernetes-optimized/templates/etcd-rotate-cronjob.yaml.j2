@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etcd-rotate
+  namespace: kube-system
+spec:
+  schedule: "0 0 * * 0" #minute(0-59) hour(0-23) day_of_month(1-31) month(1-12) day_of_week(0-6)
+  jobTemplate:
+    spec:
+      completions: 3
+      parallelism: 3
+      template:
+        metadata:
+          labels:
+            task: etcd-rotate 
+        spec:
+          tolerations:
+            - effect: NoSchedule
+              key: node-role.kubernetes.io/master
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: ""
+          containers:
+          - name: etcd-rotate
+            # Same image as in /etc/kubernetes/manifests/etcd.yaml
+            image: {{ __registry_prefix }}/k8s.gcr.io/etcd:3.5.15-0
+            env:
+            - name: ETCDCTL_API
+              value: "3"
+            command: ["/bin/sh"]
+            args: ["-c", "find /backup -mtime +7 -name '*.db' -exec rm {} \\;"]
+            volumeMounts:
+            - mountPath: /etc/kubernetes/pki/etcd
+              name: etcd-certs
+              readOnly: true
+            - mountPath: /backup
+              name: backup
+          restartPolicy: OnFailure
+          hostNetwork: true
+          volumes:
+          - name: etcd-certs
+            hostPath:
+              path: /etc/kubernetes/pki/etcd
+              type: DirectoryOrCreate
+          - name: backup
+            hostPath:
+              path: {{ etcd_backup_dir }}
+              type: DirectoryOrCreate
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchExpressions:
+                  - key: task
+                    operator: In
+                    values:
+                    - etcd-rotate
+                topologyKey: "kubernetes.io/hostname"
+

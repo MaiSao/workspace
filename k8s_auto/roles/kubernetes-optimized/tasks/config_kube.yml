@@ -1,0 +1,13 @@
+---
+- name: create kubeconfig file for the rest 
+  loop: "{{ master_user }}" 
+  ignore_errors: true
+  shell: |
+    if [[ -z $(id {{ item }}) ]]; then
+      echo user {{ item }} does not exist > {{ __bootstrap_dir }}/logs/config-kube.{{ __session_time }}.log
+    else
+      MYHOME=$(getent passwd {{ item }} | cut -d: -f6)
+      mkdir -p $MYHOME/.kube
+      cp -i /etc/kubernetes/admin.conf $MYHOME/.kube/config
+      chown {{ item }}:{{ item }} $MYHOME/.kube/config
+    fi
