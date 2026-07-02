@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+export DOCKER_BUILDKIT=0
 ########################################
 # Configuration
 ########################################
