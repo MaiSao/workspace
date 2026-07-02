@@ -1,0 +1,109 @@
+---
+#---------------------------------------------------
+# Dynamic install service catalog
+#---------------------------------------------------
+# Default behavior runs the full current install flow. Operators usually edit
+# only k8s_default_services or k8s_enabled_extra_services.
+#
+# Full install:
+#   ansible-playbook -i inventory.ini site.yml
+#
+# Run only selected built-in phases:
+#   ansible-playbook -i inventory.ini site.yml \
+#     -e 'k8s_install_services=["cni","addons"]'
+#---------------------------------------------------
+
+# Built-in install phases. Keep this order unless you understand the dependency
+# chain: nodes must be prepared before containerd, HA before kubeadm init, CNI
+# before normal workloads, and patching after static pods exist.
+k8s_default_services:
+  - common                 # OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap config
+  - containerd             # container runtime package/config/service
+  - k8s_ha                 # HAProxy, Keepalived, API VIP on master nodes
+  - kubeadm_prepare        # audit policy and kubeadm config rendering
+  - kubeadm_control_plane  # kubeadm init and join command generation on master[0]
+  - kubeconfig             # admin kubeconfig for configured master users
+  - kubeadm_join           # join non-bootstrap masters and workers
+  - cni                    # Calico, CoreDNS, optional Multus/Whereabouts/SR-IOV
+  - addons                 # etcd jobs, metrics-server, kube-state-metrics
+  - k8s_patch              # static pod resources and arguments
+
+# Optional built-in services can be appended here later without editing the
+# default list. Currently empty because all built-in phases above run by default.
+k8s_enabled_optional_services: []
+
+# Effective built-in service list used by site.yml roles.
+k8s_install_services: "{{ k8s_default_services + k8s_enabled_optional_services }}"
+
+#---------------------------------------------------
+# Human-readable service catalog
+#---------------------------------------------------
+# This catalog documents the built-in phases. It is not the execution loop for
+# site.yml; the playbook roles are explicit so install order is easy to audit.
+k8s_service_catalog:
+  - name: common
+    role: common
+    phase: base
+    required: true
+    description: OS prep, repositories, packages, kernel modules, sysctl, host file setup, and kubelet bootstrap config.
+  - name: containerd
+    role: containerd
+    phase: base
+    required: true
+    description: Containerd package, registry hosts config, crictl config, and containerd service start.
+  - name: k8s_ha
+    role: k8s_ha
+    phase: base
+    required: true
+    description: HAProxy, Keepalived, API VIP, and API health check script on master nodes.
+  - name: kubeadm_prepare
+    role: kubeadm_prepare
+    phase: cluster
+    required: true
+    description: Audit policy and kubeadm config rendering.
+  - name: kubeadm_control_plane
+    role: kubeadm_control_plane
+    phase: cluster
+    required: true
+    description: Image pull check, kubeadm init, and join command generation.
+  - name: kubeconfig
+    role: kubeconfig
+    phase: cluster
+    required: true
+    description: Copy admin kubeconfig for configured master users.
+  - name: kubeadm_join
+    role: kubeadm_join
+    phase: cluster
+    required: true
+    description: Join non-bootstrap masters and workers.
+  - name: cni
+    role: services/k8s_cni
+    phase: network
+    required: true
+    description: Calico, optional Multus/Whereabouts/SR-IOV, and CoreDNS rollout.
+  - name: addons
+    role: services/k8s_addons
+    phase: addons
+    required: false
+    description: etcd jobs, metrics-server, and kube-state-metrics.
+  - name: k8s_patch
+    role: k8s_patch
+    phase: patch
+    required: false
+    description: Patch control-plane static pod resources and arguments.
+
+#---------------------------------------------------
+# Future extra service roles
+#---------------------------------------------------
+# This list is consumed by extra-services.yml and is empty by default. Add entries
+# here after creating a role under roles/services/.
+#
+# Example:
+# k8s_enabled_extra_services:
+#   - name: ingress_nginx
+#     role: services/k8s_ingress_nginx
+#     enabled: true
+#
+# Run extra services:
+#   ansible-playbook -i inventory.ini extra-services.yml
+k8s_enabled_extra_services: []

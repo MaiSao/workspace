@@ -1,0 +1,61 @@
+apiVersion: v1
+data:
+  bootstrap.sh: "#! /bin/bash\nSCRIPT_DIR=$( cd \"$( dirname \"${BASH_SOURCE[0]}\"
+    )\" && pwd )\n\n# Add route\nif [[ -f \"$SCRIPT_DIR/setup_routes.sh\" ]]; then\n
+    \   sudo /bin/bash $SCRIPT_DIR/setup_routes.sh $VIM_NAME\nfi\n\n# Add iptables
+    rules\nif [[ -f $SCRIPT_DIR/setup_iptables.sh ]]; then\n    sudo /bin/bash $SCRIPT_DIR/setup_iptables.sh
+    $VDU_NAME $VIM_NAME $NETWORK_MODE\nfi\n\n# Setup applications\nif [[ -f $SCRIPT_DIR/setup_applications.sh
+    ]]; then\n    sudo /bin/bash $SCRIPT_DIR/setup_applications.sh $VDU_NAME $VIM_NAME
+    $NETWORK_MODE\nfi\n\n# setup env share and private\nif [[ -f \"$SCRIPT_DIR/setup_env.sh\"
+    ]]; then\n\tsource $SCRIPT_DIR/setup_env.sh\nfi\n\n# Start application\ncase \"$VDU_NAME\"
+    in\n    kafka)\n        start_kafka.sh $@\n    ;;\n    zookeeper)\n        start_zookeeper.sh
+    $@\n    ;;\n    em)\n        /bin/bash /u01/setup/script.sh\n    ;;\n    fep)\n
+    \       /bin/bash /u01/setup/script.sh\n    ;;\n    bep)\n        /bin/bash /u01/setup/script.sh\n
+    \   ;;\n    media)\n        /bin/bash /u01/setup/script.sh\n    ;;\n    app)\n
+    \       sleep 3000\n    ;;\n    *)\n        /bin/bash start.sh\n    ;;\nesac\n"
+  setup_applications.sh: "#! /bin/bash\nVDU_NAME=$1\necho \"Setup application for
+    pod with VDU_NAME: $VDU_NAME\"\n\nif [[ -z \"$VDU_NAME\" ]]; then\n    echo \"Pod
+    has no env VDU_NAME\"\n    exit 0\nfi\n\ncase \"$VDU_NAME\" in    \n    kafka)\n
+    \       # data\n\t\tif [[ -d \"/opt/kafka/data-0\" ]]; then\n\t\t\t/usr/bin/chown
+    -R ocs:ocs /opt/kafka/data-0\n\t\tfi\n\t\t\n\t\t# logs\n\t\tif [[ -d \"/opt/kafka/logs\"
+    ]]; then\n\t\t\t/usr/bin/chown -R ocs:ocs /opt/kafka/logs\n\t\tfi\n    ;;\n    zookeeper)\n
+    \       # logs\n\t\tif [[ -d \"/opt/zookeeper/logs\" ]]; then\n\t\t\t/usr/bin/chown
+    -R ocs:ocs /opt/zookeeper/logs\n\t\tfi\n\t\t\n\t\t# data\n\t\tif [[ -d \"/var/zookeeper/data\"
+    ]]; then\n\t\t\t/usr/bin/chown -R ocs:ocs /var/zookeeper/data\n\t\tfi\n\t\t\n\t\tif
+    [[ -d \"/var/zookeeper/logs\" ]]; then\n\t\t\t/usr/bin/chown -R ocs:ocs /var/zookeeper/logs\n\t\tfi\n
+    \   ;;\n    cdr-processor|roaming-offline)\n\t\t# logs\n\t\tif [[ -d \"logs\"
+    ]]; then\n\t\t\t/usr/bin/chown -R ocs:ocs logs\n\t\tfi\n\t\t\n        # ../logs\n\t\tif
+    [[ -d \"../logs\" ]]; then\n\t\t\t/usr/bin/chown -R ocs:ocs ../logs\n\t\tfi\n\n
+    \       # /u01/datacdr\n\t\tif [[ -d \"/u01/datacdr\" ]]; then\n\t\t\t/usr/bin/chown
+    -R ocs:ocs /u01/datacdr\n\t\tfi\n\t\t\n\t\t# /u01/app/datacdr\n\t\tif [[ -d \"/u01/app/datacdr\"
+    ]]; then\n\t\t\t/usr/bin/chown -R ocs:ocs /u01/app/datacdr\n\t\tfi\n    ;;\n    *)\n
+    \       # Do any things default\n        # logs\n\t\tif [[ -d \"logs\" ]]; then\n\t\t\t/usr/bin/chown
+    -R ocs:ocs logs\n\t\tfi\n\n        # ../logs\n\t\tif [[ -d \"../logs\" ]]; then\n\t\t\t/usr/bin/chown
+    -R ocs:ocs ../logs\n\t\tfi\n    ;;\nesac\n"
+  setup_env.sh: "DIR=/u01/app/etc\nsharedEnv=$DIR/envshare/env-share.env\nprivatedEnv=$DIR/config/env.conf\n##
+    export env shared \nif [ -f \"$sharedEnv\" ]; then\n        echo \"exits file
+    $sharedEnv\"\n        export $(cat \"$sharedEnv\")\nelse\n        echo \"$sharedEnv
+    not exits\"\nfi\n\n## export snv private\n\nif [ -f \"$privatedEnv\" ]; then\n
+    \       echo \"exits file $privatedEnv\"\n        export $(cat \"$privatedEnv\")\nelse\n
+    \       echo \"$privatedEnv not exits\"\nfi\n"
+  setup_iptables.sh: |
+    #! /bin/bash
+    VDU_NAME=$1
+    echo "Setup iptables rules for pod with VDU_NAME: $VDU_NAME"
+
+    #Add rule accept all
+  setup_routes.sh: "#! /bin/bash\nVIM_NAME=$1\necho \"Setup route for pod in VIM:
+    $VIM_NAME\"\n\nif [[ -z \"$VIM_NAME\" ]]; then\n\techo \"Pod has no env VIM_NAME\"\n\texit
+    0\nfi\n\ncase \"$VIM_NAME\" in\n\tVIM_K8S_SITE_1)\n\t\t\n\t\t#Add route by interface\n\t\tif
+    ls /sys/class/net/app-net 1> /dev/null 2>&1; then\n\t\t\t#add app-net to site02\n\t\t\tip
+    route add 10.204.75.0/24 via 10.204.74.254\n\t\tfi\n\t\tif  ls /sys/class/net/db-net
+    1> /dev/null 2>&1; then\n\t\t\t#add route to db linksite site02\n\t\t\tip route
+    add 10.205.3.0/24 via 10.205.2.254\n\t\tfi\n\t;;\n\tVIM_K8S_SITE_2)\n\t\t#Add
+    route by interface\n\t\tif ls /sys/class/net/app-net 1> /dev/null 2>&1; then\n\t\t\t#add
+    app-net to site01\n\t\t\tip route add 10.204.74.0/24 via 10.204.75.254\n\t\tfi\n\t\tif
+    \ ls /sys/class/net/db-net 1> /dev/null 2>&1; then\n\t\t\t#add route to db linksite
+    site01\n\t\t\tip route add 10.205.2.0/24 via 10.205.3.254\n\t\tfi\n\t;;\nesac\n"
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: bootstrap

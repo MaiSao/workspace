@@ -1,0 +1,84 @@
+---
+- name: check if images are pullable
+  loop: "{{ container_images }}"
+  shell: |
+    crictl pull {{ __registry_prefix }}/{{ item }}
+  when: "'kubeadm_control_plane' in k8s_install_services"
+
+- name: init cluster
+  register: __init_cluster
+  shell: |
+    cat > /root/init-k8s.sh <<'EOF'
+    KUBEADMF=/root/kubeadm.yaml
+    kubeadm config migrate --old-config {{ __bootstrap_dir }}/kubeadm-config.yaml --new-config $KUBEADMF
+    sed -i 's/controlPlaneComponentHealthCheck.*/controlPlaneComponentHealthCheck: 30s/g' $KUBEADMF
+    echo '---' >> $KUBEADMF
+    awk '/apiVersion: kubelet.config.k8s.io\/v1beta1/{flag=1} flag && /^---/ {exit} flag' {{ __bootstrap_dir }}/kubeadm-config.yaml >> $KUBEADMF
+    echo '---' >> $KUBEADMF
+    awk '/apiVersion: kubeproxy.config.k8s.io\/v1alpha1/{flag=1} flag && /^---/ {exit} flag' {{ __bootstrap_dir }}/kubeadm-config.yaml >> $KUBEADMF
+    kubeadm init --upload-certs --config $KUBEADMF
+    EOF
+    bash /root/init-k8s.sh | tee {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log
+  when: "'kubeadm_control_plane' in k8s_install_services"
+
+- tags: ["debug"]
+  debug:
+    var: __init_cluster.stdout_lines
+  when:
+    - "'kubeadm_control_plane' in k8s_install_services"
+    - __init_cluster is defined
+
+- name: print join node command
+  register: __join_command
+  shell: kubeadm token create --print-join-command
+  when: >
+    'kubeadm_control_plane' in k8s_install_services
+    or 'kubeadm_join' in k8s_install_services
+
+- name: re-upload key
+  register: __cert_key
+  shell: kubeadm init phase upload-certs --upload-certs
+  when: >
+    'kubeadm_control_plane' in k8s_install_services
+    or 'kubeadm_join' in k8s_install_services
+
+- name: join control plane
+  set_fact:
+    control_join: |
+      {{ __join_command.stdout }} --control-plane --certificate-key {{ __cert_key.stdout_lines[2] }}
+    worker_join: |
+      {{ __join_command.stdout }}
+  when: >
+    'kubeadm_control_plane' in k8s_install_services
+    or 'kubeadm_join' in k8s_install_services
+
+- tags: ["debug"]
+  debug:
+    msg: |
+      {{ control_join }}
+      {{ worker_join }}
+  when: >
+    'kubeadm_control_plane' in k8s_install_services
+    or 'kubeadm_join' in k8s_install_services
+
+- name: regen script for used later
+  shell: |
+    cat > /root/regen_join_command.sh <<'EOF'
+    ISC=$(kubectl get node $(echo $(hostname) | tr '[:upper:]' '[:lower:]') --show-labels | grep control-plane)
+    if [[ -z "$ISC" ]]; then
+          echo must run on a control/master node. Cannot run in a normal client.
+          exit 1
+    fi
+    WJOIN=$(kubeadm token create --print-join-command)
+    CERT_UPLOAD=$(kubeadm init phase upload-certs --upload-certs | awk 'NR==3')
+    CJOIN="$WJOIN --control-plane --certificate-key $CERT_UPLOAD --apiserver-advertise-address $(cat /etc/sysconfig/kubeip)"
+    cat <<EOM
+    - Worker join command:
+      $WJOIN
+    - Control join command:
+      $CJOIN
+    EOM
+    EOF
+  when: >
+    'kubeadm_control_plane' in k8s_install_services
+    or 'kubeadm_join' in k8s_install_services

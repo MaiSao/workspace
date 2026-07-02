@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit-ocs
+  namespace: fluentbit
+  labels:
+    k8s-app: fluent-bit-logging
+    version: v1
+    kubernetes.io/cluster-service: "true"
+spec:
+  selector:
+    matchLabels:
+      k8s-app: fluent-bit-logging
+  template:
+    metadata:
+      labels:
+        k8s-app: fluent-bit-logging
+        version: v1
+        kubernetes.io/cluster-service: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2020"
+        prometheus.io/path: /api/v1/metrics/prometheus
+    spec:
+      serviceAccountName: fluent-bit-ocs
+      containers:
+        - name: fluent-bit-ocs
+          image: harbor-registry:8018/vht/fluent-bit:4.2.2
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "SYS_TIME"]
+            readOnlyRootFilesystem: true
+          ports:
+            - containerPort: 2020
+          env:
+            - name: FLUENT_ELASTICSEARCH_HOST
+              value: "elasticsearch-master.elk.svc"
+            - name: FLUENT_ELASTICSEARCH_PORT
+              value: "9200"
+            - name: FLB_CLUSTER
+              value: "hlamano"
+            - name: FLB_HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: FLB_HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              memory: 50Mi
+              cpu: 1
+            limits:
+              memory: 4Gi
+              cpu: 2
+          volumeMounts:
+            - name: etcmachineid
+              mountPath: /etc/machine-id
+              readOnly: true
+            - name: journallog
+              mountPath: /run/log/journal
+              readOnly: true
+            - name: varlogcontainers
+              mountPath: /var/log
+              readOnly: true
+            - name: fluent-bit-ocs-deploy
+              mountPath: /fluent-bit/etc/
+            - name: pod-log-storage
+              mountPath: /u01/mano-data
+              readOnly: true
+            - name: flb-storage
+              mountPath: /data/flb-storage
+            - name: flb-db
+              mountPath: /data/db
+            - name: mongodb
+              mountPath: /u01/mongodb
+            - name: manolog
+              mountPath: /u02/VNF
+            - name: k8sdata
+              mountPath: /u01/k8saudit
+            - name: mysqllog
+              mountPath: /u01/mda/mysql/data
+      terminationGracePeriodSeconds: 10
+      volumes:
+        - name: etcmachineid
+          hostPath:
+            path: /etc/machine-id
+            type: File
+        - name: journallog
+          hostPath:
+            path: /run/log/journal
+        - name: varlogcontainers
+          hostPath:
+            path: /var/log
+        - name: fluent-bit-ocs-deploy
+          configMap:
+            name: fluent-bit-ocs-config
+        - name: pod-log-storage
+          hostPath:
+            path: /u01/mano-data/
+        - name: manolog
+          hostPath:
+            path: /u02/VNF/
+        - name: flb-storage
+          hostPath:
+            path: /u01/flb-storage
+        - name: flb-db
+          hostPath:
+            path: /u01/flb-db
+        - name: k8sdata
+          hostPath:
+            path: /u01/k8saudit
+        - name: mongodb
+          hostPath:
+            path: /u01/mongodb
+        - name: mysqllog
+          hostPath:
+            path: /u01/mda/mysql/data
+      tolerations:
+        - operator: "Exists"

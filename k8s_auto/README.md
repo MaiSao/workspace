@@ -1,39 +1,126 @@
 ---
 Title: Install Kubernetes guide
 ---
-### 1. Prepare Repo
 
-- Prepare Red Hat repo. Requires minimum AppStream and BaseOS in RHEL8+
-- Prepare Kubernetes repo. Packages can be used in `install_tools` directories.
+## Overview
 
-### 2. Prepare Container registry
+This directory contains an Ansible-based Kubernetes installer. The main entry point is `site.yml`, which runs split roles for node prep, containerd, HA, kubeadm, CNI, add-ons, and patching. Install phases are controlled by the dynamic service catalog in `group_vars/services.yml`.
 
-- You can either use docker registry or Harbor registry.
-- For production use, a HA harbor registry with minimum 3 replicas
-  minimum is required.
+Default behavior is still a full install. You only need to change service variables when you want to skip built-in phases or add future extra service roles.
 
-### 3. Prepare ansible inventory
+## 1. Prepare Repositories
 
-- A sample inventory is available at [`install_tools/inventory.ini`].
-  The final inventory.ini need to be placed on repo root dir.
-- Note that `k8s_ip` var is needed for each host entry
-- Root privileage is required for all k8s nodes.
+- Prepare Red Hat repositories. RHEL 8+ requires at least BaseOS and AppStream.
+- Prepare the Kubernetes package repository used by the target nodes.
+- Confirm all nodes can reach the configured repository endpoint from `group_vars/all.yml`.
+
+## 2. Prepare Container Registry
+
+- Use either Docker Registry or Harbor.
+- For production, use a highly available registry.
+- Confirm `registry_name`, `registry_ip`, `registry_port`, and `registry_protocol` in `group_vars/all.yml`.
+- Confirm image lists in `group_vars/image_file.yml` match the Kubernetes and add-on versions you plan to install.
+
+## 3. Prepare Ansible Inventory
+
+The playbook expects a `master` group. Each node must define `k8s_ip`. Root access is required on all Kubernetes nodes.
 
 ```ini
-[masters]
+[master]
 1.255.0.7 priority=5 k8s_ip=1.255.0.7 ansible_ssh_user=root ansible_ssh_pass=myk8snow
+
+[worker]
+1.255.0.8 k8s_ip=1.255.0.8 ansible_ssh_user=root ansible_ssh_pass=myk8snow
 ```
 
-### 4. Prepare host vars
+Place the final inventory at `k8s_auto/inventory.ini`.
 
-- Change vars as desired in [`group_vars/all.yml`]. Follow the
-  comment in the var file for instruction.
+## 4. Configure Cluster Variables
 
-### 5. Deploy
+Review these files before running:
 
-- Once done preparation, you double-check the vars again.
-- Simply run ansible-playbook on the `site.yml` playbook
+- `group_vars/all.yml`: Kubernetes version, networking, registry, repo, VIP, audit, etcd, containerd, and bootstrap settings.
+- `group_vars/image_file.yml`: images and manifest template lists.
+- `group_vars/master.yml`: control-plane static pod resource requests and limits.
+- `group_vars/services.yml`: install phase selection and future extra service catalog.
+
+## 5. Role Layout
+
+The installer is split by responsibility:
+
+```text
+roles/common/                 OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap
+roles/containerd/             containerd package, registry config, crictl, service start
+roles/k8s_ha/                 HAProxy, Keepalived, API VIP, health check
+roles/kubeadm_prepare/        audit policy and kubeadm config rendering
+roles/kubeadm_control_plane/  kubeadm init and join command generation
+roles/kubeadm_join/           worker/control-plane join logic
+roles/kubeconfig/             admin kubeconfig setup for master users
+roles/services/k8s_cni/       Calico, Multus, Whereabouts, SR-IOV, CoreDNS
+roles/services/k8s_addons/    metrics-server, kube-state-metrics, etcd jobs
+roles/k8s_patch/              static pod resource/argument patching
+```
+
+## 6. Service Catalog
+
+Default install phases are defined in `group_vars/services.yml`:
+
+```yaml
+k8s_default_services:
+  - common
+  - containerd
+  - k8s_ha
+  - kubeadm_prepare
+  - kubeadm_control_plane
+  - kubeconfig
+  - kubeadm_join
+  - cni
+  - addons
+  - k8s_patch
+```
+
+Normal full install uses all default services. To skip a built-in phase, remove it from `k8s_default_services` or override `k8s_install_services` at runtime.
+
+Example: run only CNI after the cluster exists:
 
 ```shell
-$ ansible-playbook site.yml
+ansible-playbook -i inventory.ini site.yml -e 'k8s_install_services=["cni"]'
 ```
+
+## 7. Deploy Full Cluster
+
+Run from `k8s_auto/`:
+
+```shell
+ansible-playbook -i inventory.ini site.yml
+```
+
+Warning: bootstrap tasks reset Kubernetes, CNI, kubeconfig, and etcd state on target nodes. Run only on nodes intended for this cluster.
+
+## 8. Add Future Extra Services
+
+Create a new role under `roles/services/`, for example:
+
+```text
+roles/services/k8s_ingress_nginx/
+  tasks/main.yml
+  templates/
+  defaults/main.yml
+```
+
+Add it to `group_vars/services.yml`:
+
+```yaml
+k8s_enabled_extra_services:
+  - name: ingress_nginx
+    role: services/k8s_ingress_nginx
+    enabled: true
+```
+
+Then run:
+
+```shell
+ansible-playbook -i inventory.ini extra-services.yml
+```
+
+By default, `k8s_enabled_extra_services` is empty, so `extra-services.yml` does nothing until you add service roles.

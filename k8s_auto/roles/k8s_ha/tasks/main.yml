@@ -1,0 +1,16 @@
+---
+- name: generate HA bootstrap script
+  tags: ["dryrun"]
+  template:
+    src: k8s-ha-bootstrap.sh.j2
+    dest: /root/kube-ha-bootstrap.sh
+    mode: '0755'
+  when:
+    - "'k8s_ha' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: execute HA bootstrap script
+  shell: bash /root/kube-ha-bootstrap.sh | tee {{ __bootstrap_dir }}/logs/k8s-ha-bootstrap.{{ __session_time }}.log
+  when:
+    - "'k8s_ha' in k8s_install_services"
+    - "'master' in group_names"

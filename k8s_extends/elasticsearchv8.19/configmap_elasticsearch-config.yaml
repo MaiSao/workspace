@@ -1,0 +1,58 @@
+apiVersion: v1
+data:
+  elasticsearch.yml: |
+    cluster.name: es-hcm
+    network.host: ["_bond2.1005_"]
+    http.host: "_bond2.1005_"
+    http.publish_host: "_bond2.1005_"
+    transport.host: "_bond2.1005_"
+    transport.publish_host: "_bond2.1005_"
+    http.port: 9200
+    transport.port: 9300
+
+    xpack.security.enabled: true
+    xpack.security.transport.ssl.enabled: true
+    xpack.security.transport.ssl.verification_mode: certificate
+    xpack.security.transport.ssl.key: certs/tls.key
+    xpack.security.transport.ssl.certificate: certs/tls.crt
+    xpack.security.transport.ssl.certificate_authorities: [ "certs/ca.crt" ]
+    xpack.security.http.ssl.enabled: true
+    xpack.security.http.ssl.key: certs/tls.key
+    xpack.security.http.ssl.certificate: certs/tls.crt
+    xpack.security.http.ssl.certificate_authorities: [ "certs/ca.crt" ]
+    path.logs: /usr/share/elasticsearch/logs
+    node.name: ${NODE_NAME}
+    node.roles: ${NODE_ROLES}
+
+    thread_pool:
+      write:
+        size: 8
+        queue_size: 8000
+      search:
+        size: 4
+        queue_size: 2000
+
+    indices.memory.index_buffer_size: 35%
+
+    # Recovery tuning
+    indices.recovery.max_bytes_per_sec: 2gb
+    indices.recovery.max_concurrent_operations: 2
+    cluster.routing.allocation.node_concurrent_recoveries: 2
+    cluster.routing.allocation.node_initial_primaries_recoveries: 2
+    cluster.routing.allocation.cluster_concurrent_rebalance: 2
+    indices.recovery.recovery_activity_timeout: 30m
+    indices.recovery.internal_action_timeout: 2m
+    indices.recovery.max_concurrent_file_chunks: 2
+
+    # Routing
+    cluster.routing.allocation.enable: all
+    cluster.routing.allocation.balance.shard: 0.45
+    cluster.routing.allocation.balance.index: 0.55
+    cluster.routing.allocation.allow_rebalance: always
+
+    discovery.seed_hosts: ["192.168.5.86", "192.168.5.3", "192.168.5.4"]
+    cluster.initial_master_nodes: ["bchcmcom02", "bchcmcom03", "bchcmcom04"]
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config
+  namespace: elk

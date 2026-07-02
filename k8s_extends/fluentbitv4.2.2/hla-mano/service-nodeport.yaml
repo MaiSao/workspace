@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fluent-bit-service
+  namespace: fluentbit
+  annotations:
+    prometheus.io/path: /api/v1/metrics/prometheus
+    prometheus.io/port: "2020"
+    prometheus.io/scrape: "yes"
+
+  labels:
+    k8s-app: fluent-bit-logging
+spec:
+  selector:
+    k8s-app: fluent-bit-logging
+  ports:
+    - protocol: TCP
+      port: 2020
+      targetPort: 2020
+  type: ClusterIP

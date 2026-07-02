@@ -1,0 +1,53 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-macvlan
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-macvlan
+  template:
+    metadata:
+      labels:
+        app: test-macvlan
+      annotations:
+        k8s.v1.cni.cncf.io/networks: |
+          [{
+            "name": "ocs-cgw-data-gx",
+            "namespace": "default",
+            "interface": "app-net"
+          },
+          { 
+            "name": "aerospike-linksite",
+            "namespace": "default",
+            "interface": "db-net"
+          }]
+    spec:
+      containers:
+      - args:
+        - /setup/bootstrap.sh
+        command:
+        - /bin/bash
+        env:
+        - name: VIM_NAME
+          value: VIM_K8S_SITE_2
+        - name: NETWORK_MODE
+          value: db-net
+        - name: VDU_NAME
+          value: app
+        image: harbor-registry:8018/mano/abm:4.5.4 
+        name: app
+        securityContext:
+          capabilities:
+            add:
+              - NET_ADMIN
+        volumeMounts:
+        - mountPath: /setup
+          name: bootstrap
+      volumes:
+      - configMap:
+          name: bootstrap
+        name: bootstrap

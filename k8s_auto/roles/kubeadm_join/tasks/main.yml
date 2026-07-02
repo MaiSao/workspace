@@ -1,0 +1,14 @@
+---
+- name: join nodes to cluster
+  shell: |
+    cat > /root/join-cluster.sh <<'EOF'
+    if [[ -f /etc/kube-master-metadata ]]; then
+      {{ hostvars[groups['master'][0]].control_join }} --apiserver-advertise-address {{ k8s_ip }}
+    else
+      {{ hostvars[groups['master'][0]].worker_join }}
+    fi
+    EOF
+    bash /root/join-cluster.sh | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+  when:
+    - "'kubeadm_join' in k8s_install_services"
+    - inventory_hostname != groups['master'][0]

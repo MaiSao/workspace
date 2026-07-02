@@ -1,0 +1,618 @@
+apiVersion: v1
+data:
+  filter.conf: |
+    [FILTER]
+        Name   grep
+        Alias grep_mess
+        Match  vocs40.*
+        regex  message .{1,}
+
+    [FILTER]
+        Name  modify
+        Alias modify.addVNF
+        Match vocs40.ocs*
+        ADD   objectType VNF
+
+    [FILTER]
+        Name  modify
+        Alias modify.mano
+        Match vocs40.mano
+        ADD   objectType MANO
+
+    [FILTER]
+        Name modify
+        Match vocs40.kube
+        ADD vimName ${FLB_CLUSTER}
+        ADD severity INFO
+
+    [FILTER]
+        Name          parser
+        Alias         parser.service
+        Match         vocs40.ocs*
+        Key_Name      log_path
+        Parser        ocs.service_from_path
+        Preserve_Key  True
+        Reserve_Data  True
+
+    [FILTER]
+        Name          parser
+        Match         vocs40.mano
+        Key_Name      log_path
+        Parser        mano.service_from_path
+        Preserve_Key  True
+        Reserve_Data  True
+
+
+    [FILTER]
+        Name          parser
+        Alias         kube_container_path
+        Match         vocs40.kube
+        Key_Name      log_path
+        Parser        kube_container_path
+        Preserve_Key  True
+        Reserve_Data  True
+
+    [FILTER]
+        Name modify
+        Match host.*
+        ADD hostIp ${FLB_HOST_IP}
+
+    [FILTER]
+        Name modify
+        Alias modify_last
+        Match vocs40.*
+        ADD hostName ${FLB_HOST_NAME}
+        ADD hostIp ${FLB_HOST_IP}
+        Remove raw_message
+        Rename timestamp @timestamp
+        Rename ingestion_time @ingestion_time
+
+    [FILTER]
+        Name modify
+        Alias mda-jsonl-filter-modify
+        Match mda-jsonl-tag
+        ADD hostName ${FLB_HOST_NAME}
+        ADD hostIp ${FLB_HOST_IP}
+        Remove raw_message
+
+    [FILTER]
+        Name          parser
+        Match         mda-jsonl-tag
+        Key_Name      log_path
+        Parser        mda-jsonl-log-path
+        Preserve_Key  True
+        Reserve_Data  True
+
+    [FILTER]
+        Name parser
+        Match mda-mysql-audit
+        Key_Name audit_record
+        Parser mysql_audit_inner
+        Reserve_Data On
+
+    [FILTER]
+        Name nest
+        Match mda-mysql-audit
+        Operation lift
+        Nested_under audit_record
+
+    [FILTER]
+        Name          parser
+        Match         mda-mysql-slow
+        Key_Name      log
+        Parser        mysql_slow_parser
+        Preserve_Key  True
+        Reserve_Data  True
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush        5
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+        Parsers_File multiline.conf
+        HTTP_Server  On
+        HTTP_Listen  0.0.0.0
+        HTTP_Port    2020
+        Health_Check On
+        storage.path              /data/flb-storage
+        storage.sync              normal
+        storage.checksum          off
+        storage.backlog.mem_limit 512M
+        storage.metrics on
+        storage.max_chunks_up 4096
+
+
+    @SET USER_ID=flb_user
+    @SET HOST_IP=0.0.0.0
+    @SET CHUNK_SIZE=1M
+    @SET BUFF_SIZE=5M
+    @SET MEM_SIZE=2G
+    @SET MEDIUM_MEM_SIZE=4G
+    @SET LARGE_MEM_SIZE=8G
+
+    @INCLUDE input.conf
+    @INCLUDE filter.conf
+    @INCLUDE output.conf
+  input.conf: |
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias audit-k8s
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEM_SIZE}
+        Tag audit.k8s
+        Offset_Key On
+        Path /u01/k8saudit/audit.log
+        Key raw_message
+        DB /data/db/k8s-audit.db
+        Multiline On
+        Parser_Firstline audit
+        Skip_Long_Lines On
+        skip_empty_lines On
+        Static_Batch_Size 10MB
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+
+    [INPUT]
+        Name systemd
+        Alias kubelet
+        Tag host.kubelet
+        Path /run/log/journal
+        Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+        Read_From_Tail On
+    [INPUT]
+        Name systemd
+        Alias containerd
+        Tag host.containerd
+        Systemd_Filter _SYSTEMD_UNIT=containerd.service
+        Path /run/log/journal
+        Read_From_Tail On
+    [INPUT]
+        Name systemd
+        Alias haproxy
+        Tag host.haproxy
+        Systemd_Filter _SYSTEMD_UNIT=haproxy.service
+        Path /run/log/journal
+        Read_From_Tail On
+    [INPUT]
+        Name systemd
+        Alias keepalived
+        Tag host.keepalived
+        Systemd_Filter _SYSTEMD_UNIT=keepalived.service
+        Path /run/log/journal
+        Read_From_Tail On
+
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias kubepods
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEDIUM_MEM_SIZE}
+        Tag vocs40.kube
+        Offset_Key On
+        Path /var/log/containers/*.log
+        Exclude_Path  /var/log/containers/*fluent-bit*.log
+        Path_Key log_path
+        Key raw_message
+        Multiline On
+        DB  /data/db/flb-kube-svc.db
+        Parser_Firstline cri
+        Skip_Long_Lines On
+        skip_empty_lines On
+        Static_Batch_Size 10MB
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias mano
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEM_SIZE}
+        Tag vocs40.mano
+        Offset_Key On
+        Path /u01/mano-data/mano-services/*/*/*/*/*.log
+        Path_Key log_path
+        Key raw_message
+        Multiline On
+        DB  /data/db/ocs-mano.db
+        Parser_Firstline mano.standard
+        Skip_Long_Lines On
+        skip_empty_lines On
+        Static_Batch_Size 10MB
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias mano-agents
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEM_SIZE}
+        Tag vocs40.ocs.mano-agents
+        Offset_Key On
+        Path /u02/VNF/mano-agents*/*/*/*/*.log
+        Path_Key log_path
+        Key raw_message
+        Multiline On
+        DB  /data/db/ocs-mano-agents.db
+        Parser_Firstline ocs.mano.standard
+        Skip_Long_Lines On
+        skip_empty_lines On
+        Static_Batch_Size 10MB
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias mano-mongodb
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEM_SIZE}
+        Tag vocs40.mano.mongodb
+        Offset_Key On
+        Path /u01/mongodb/log/*.log
+        Path_Key log_path
+        Key raw_message
+        Multiline On
+        DB  /data/db/mongodb.db
+        Parser_Firstline mongodb
+        Skip_Long_Lines On
+        skip_empty_lines On
+        Static_Batch_Size 10MB
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias mda-jsonl-tail
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEM_SIZE}
+        Tag mda-jsonl-tag
+        Offset_Key On
+        Path /u01/mda/*/*/*/*/*.jsonl
+        Path_Key log_path
+        Multiline Off
+        DB  /data/db/mda-jsonl.db
+        Parser mda-jsonl-parser
+        Skip_Long_Lines On
+        skip_empty_lines On
+        Static_Batch_Size 10MB
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias mda-mysql-audit
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEM_SIZE}
+        Tag mda-mysql-audit
+        Offset_Key On
+        Path /u01/mda/mysql/data/*/audit.log
+        Path_Key log_path
+        Key raw
+        DB  /data/db/mysqlaudit.db
+        Parser mysql_audit_json
+        Static_Batch_Size 10MB
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias mda-mysql-slow
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEM_SIZE}
+        Tag mda-mysql-slow
+        Offset_Key On
+        Path /u01/mda/mysql/data/*/slow_query.log
+        Path_Key log_path
+        DB  /data/db/mysqlslow.db
+        Multiline.Parser mysql_slow_multiline
+        Static_Batch_Size 10MB
+        Skip_Long_Lines On
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+        Read_From_Head On
+
+    [INPUT]
+        Name tail
+        Refresh_Interval 5
+        Rotate_Wait 600
+        Alias ocs
+        Buffer_Chunk_Size ${CHUNK_SIZE}
+        Buffer_Max_Size ${BUFF_SIZE}
+        Mem_Buf_Limit ${MEDIUM_MEM_SIZE}
+        Tag vocs40.ocs
+        Offset_Key On
+        Path /u01/mano-data/VNF/*ocs*/*/*/*/*.log
+        Path_Key log_path
+        Key raw_message
+        Multiline On
+        DB /data/db/ocs-cnf.db
+        Parser_Firstline ocs.standard
+        Skip_Long_Lines On
+        skip_empty_lines On
+        Static_Batch_Size 10MB
+        storage.type filesystem
+        storage.pause_on_chunks_overlimit off
+  multiline.conf: |
+    [MULTILINE_PARSER]
+        Name          mysql_slow_multiline
+        Type          regex
+        Flush_Timeout 5000
+
+        Rule      start_state   "^# Time:"        cont
+        Rule      cont          "^(?!# Time:)"    cont
+  output.conf: |
+    [OUTPUT]
+       Name  es
+       Match vocs40.kube
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index k8s
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 2
+       Buffer_Size 10M
+       storage.total_limit_size 20G
+
+    [OUTPUT]
+       Name  es
+       Match host.*
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index host-k8s-svc
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 2
+       Buffer_Size 10M
+       storage.total_limit_size 20G
+
+    [OUTPUT]
+       Name  es
+       Match audit.*
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index audit-k8s
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 2
+       Buffer_Size 10M
+       storage.total_limit_size 20G
+
+    [OUTPUT]
+       Name  es
+       Match vocs40.mano
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index mano-service
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 2
+       Buffer_Size 10M
+       storage.total_limit_size 20G
+
+    [OUTPUT]
+       Name  es
+       Match vocs40.ocs.mano-agents
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index mano-agents-hla-mano
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 2
+       Buffer_Size 10M
+       storage.total_limit_size 20G
+
+    [OUTPUT]
+       Name  es
+       Match vocs40.mano.mongodb
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index mano-mongodb
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 2
+       Buffer_Size 10M
+       storage.total_limit_size 2G
+
+    [OUTPUT]
+       Name  es
+       Match mda-jsonl-tag
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index mda-jsonl-service
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 2
+       Buffer_Size 10M
+       storage.total_limit_size 20G
+
+    [OUTPUT]
+       Name  es
+       Match mda-mysql*
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index mda-mysql-service
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 2
+       Buffer_Size 10M
+       storage.total_limit_size 20G
+
+    [OUTPUT]
+       Name  es
+       Match vocs40.ocs
+       Host ${FLUENT_ELASTICSEARCH_HOST}
+       Port ${FLUENT_ELASTICSEARCH_PORT}
+       HTTP_User elastic
+       HTTP_Passwd 123456a@
+       TLS             On
+       TLS.Verify      Off
+       Logstash_Format Off
+       Index ocs-service
+       Replace_Dots Off
+       Generate_ID Off
+       Retry_Limit False
+       net.connect_timeout 5
+       net.keepalive on
+       Trace_Error On
+       Suppress_Type_Name On
+       Workers 4
+       Buffer_Size 10M
+       storage.total_limit_size 50G
+  parsers.conf: "[PARSER]\n    Name        pod_info\n    Format      regex\n    Regex
+    \\/.*?\\/.*?\\/.*?\\/(?<namespace>.*?)_(?<pod_name>.*?)_(?<pod_id>.*)\\/(?<container_name>.*)\\/(?<num_log_file>.*).log$\n\n[PARSER]\n
+    \   Name ocs.standard\n    Format regex\n    Regex  /(?<timestamp>\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\s+(?<package>[^
+    ]+)\\s+\\[(?<severity>[^ ]*?)\\]\\s+\\[(?<thread>[^ ]*)\\]:\\s+msisdn=\\[(?<msisdn>[^
+    ]*?)\\]\\s+sessionId=\\[(?<session_id>[^ ]*?)\\](?<message>.*)/\n    Time_Format
+    %Y-%m-%d %H:%M:%S.%L\n    Time_Key timestamp\n    Time_Keep False\n    Time_Offset
+    +0700\n\n[PARSER]\n    Name ocs.kafka\n    Format regex\n    Regex  /\\[(?<timestamp>\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\,\\d{3})\\]\\s+(?<severity>[^
+    ].*?)\\s+(?<message>.*)/\n    Time_Format %Y-%m-%d %H:%M:%S,%L\n    Time_Key timestamp\n
+    \   Time_Keep False\n    Time_Offset +0700\n\n[PARSER]\n    Name ocs.zookeeper\n
+    \   Format regex\n    Regex  /(?<timestamp>\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\,\\d{3})\\s+\\[(?<id>\\w+:\\d*)\\]\\s+-\\s+(?<severity>[^
+    ].*?)\\s+(?<message>.*)/\n    Time_Format %Y-%m-%d %H:%M:%S,%L\n    Time_Key timestamp\n
+    \   Time_Keep False\n    Time_Offset +0700\n\n\n[PARSER]\n    Name ocs.mano.standard\n
+    \   Format regex\n    Regex /(?<timestamp>\\d{2}-\\d{2}-\\d{4}\\s\\d{2}:\\d{2}:\\d{2}.\\d{3})\\s+\\[(?<thread>.*?)\\]\\s+(?<severity>.*?)\\s+.\\s+\\[(?<serviceName>.*?)\\]\\s+.\\s+(?<package>.*?)\\s+(?<message>.*)/\n
+    \   Time_Format %d-%m-%Y %H:%M:%S.%L\n    Time_Key timestamp\n    Time_Keep False\n
+    \   Time_Offset +0700\n\n\n[PARSER]\n    Name ocs.service_from_path\n    Format
+    regex\n    Regex ^\\/.*?\\/.*?\\/.*?\\/(?<cNFName>.*?)\\/(?<podId>.*?)\\/(?<podName>.*?)\\/(?<containerId>.*?)\\/.*$\n\n[PARSER]\n
+    \   Name mano.standard\n    Format regex\n    Regex /(?<timestamp>\\d{2}-\\d{2}-\\d{4}
+    \\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\s+\\[(?<trace_id>[^\\]]*)\\]\\s+\\[(?<thread>[^\\]]+)\\]\\s+(?<severity>[A-Z]+)\\s+-\\s+\\[(?<serviceName>[^\\]]+)\\]\\s+-\\s+\\[?(?<log_type>[A-Z_]+)\\]?(?:\\s+-\\s+|\\s+)(?<message>.*)/
+    \n    Time_Format %d-%m-%Y %H:%M:%S.%L\n    Time_Key timestamp\n    Time_Keep
+    False\n    Time_Offset +0700\n\n[PARSER]\n    Name mano.service_from_path\n    Format
+    regex\n    Regex ^\\/.*?\\/.*?\\/(?<objectName>.*?)\\/(?<subObjectName>.*?)\\/(?<podIP>.*?)\\/.*$\n\n[PARSER]\n
+    \   Name cri\n    Format regex\n    Regex /(?<timestamp>[^ ]+) (?<stream>stdout|stderr)
+    (?<logtag>[^ ]*) (?<message>.*)/\n    Time_Key  timestamp\n    Time_Keep False\n
+    \   Time_Offset +0700\n    Time_Format %Y-%m-%dT%H:%M:%S.%L%z\n\n[PARSER]\n    Name
+    audit\n    Format json\n    Time_Key requestReceivedTimestamp\n    Time_Offset
+    +0700\n\n[PARSER]\n    Name ocs.siu-parser-01\n    Format regex\n    Regex /SPL_TRC:
+    \\[(?<spl>.*)\\]\\[ (?<timestamp>\\w{3}\\s+\\d{2}\\s+\\d{1,2}\\.\\d{1,2}\\.\\d{1,2}\\.\\d{1,3})
+    \\]\\s+(?<message>.*)/\n    Time_Format  %b %d %H.%M.%S.%L\n    Time_Key timestamp\n
+    \   Time_Keep False\n    Time_Offset +0700\n\n[PARSER]\n    Name ocs.siu-parser-02\n
+    \   Format regex\n    Regex /\\[\\s+(?<timestamp>\\w{3}\\s+\\d{1,2}\\s+\\d{1,2}\\.\\d{1,2}\\.\\d{1,2}\\.\\d{1,3})\\s+\\]\\s+(?<message>.*)/\n
+    \   Time_Format  %b %d %H.%M.%S.%L\n    Time_Key timestamp\n    Time_Keep False\n
+    \   Time_Offset +0700\n\n[PARSER]\n    Name ocs.siu-parser-03\n    Format regex\n
+    \   Regex /(?<timestamp>\\d{4}\\-\\d{0,2}\\-\\d{0,2}\\s+\\d{0,2}:\\d{0,2}:\\d{0,2},\\d{0,3})\\s+(?<message>.*)/\n
+    \   Time_Format  %Y-%m-%d %H:%M:%S,%L\n    Time_Key timestamp\n    Time_Keep False\n
+    \   Time_Offset +0700\n\n[PARSER]\n    Name        mongodb\n    Format      regex\n
+    \   Regex       /(?<timestamp>[^ ]+)\\s+(?<severity>[A-Z])\\s+(?<component>\\S+)\\s+\\[(?<context>[^\\]]+)\\]\\s+(?<message>.*)/\n
+    \   Time_Key    time\n    Time_Format %Y-%m-%dT%H:%M:%S.%L%z\n    Time_Key timestamp\n
+    \   Time_Keep False\n    Time_Offset +0700\n\n[PARSER]\n    Name   kube_container_path\n
+    \   Format regex\n    Regex  ^\\/var\\/log\\/containers\\/(?<pod_name>[^_]+)_(?<namespace>[^_]+)_(?<container_name_id>.+)\\.log$\n\n[PARSER]\n
+    \   Name mda-jsonl-parser\n    Format json\n    Time_Key timestamp\n    Time_Offset
+    +0700\n\n[PARSER]\n    Name mda-jsonl-log-path\n    Format regex\n    Regex ^\\/.*?\\/.*?\\/(?<vnfInstanceName>.*?)\\/(?<vnfInstanceId>.*?)\\/(?<vnfcName>.*?)\\/(?<vnfcId>.*?)\\/.*$\n\n[PARSER]\n
+    \   Name mysql_audit_json\n    Format json\n    Time_Key timestamp\n    Time_Format
+    %Y-%m-%dT%H:%M:%SZ\n\n[PARSER]\n    Name mysql_audit_inner\n    Format json\n
+    \   Time_Key timestamp\n    Time_Format %Y-%m-%dT%H:%M:%SZ\n\n[PARSER]\n    Name
+    \       mysql_audit_time\n    Format      json\n    Time_Key    timestamp\n    Time_Format
+    %Y-%m-%dT%H:%M:%SZ\n    Time_Keep   Off\n\n[PARSER]\n    Name   mysql_slow_firstline\n
+    \   Format regex\n    Regex  ^# Time:\n\n[PARSER]\n    Name        mysql_slow_parser\n
+    \   Format      regex\n    Time_Key    timestamp\n    Time_Format %Y-%m-%dT%H:%M:%S.%L\n
+    \   Time_Offset +0000\n    Regex  ^# Time: (?<timestamp>[^\\n]+)\\n# User@Host:
+    (?<user>[^\\n]+)\\n# Schema: (?<schema>\\S+).*?\\n# Query_time: (?<query_time>[0-9\\.]+)\\s+Lock_time:\\s+(?<lock_time>[0-9\\.]+)\\s+Rows_sent:\\s+(?<rows_sent>[0-9]+)\\s+Rows_examined:\\s+(?<rows_examined>[0-9]+).*?\\nSET
+    timestamp=(?<ts>[0-9]+);\\n(?<query>.*)\n"
+kind: ConfigMap
+metadata:
+  creationTimestamp: null
+  name: fluent-bit-ocs-config
+  namespace: fluentbit

@@ -1,17 +1,31 @@
 #---------------------------------------------------
-# K8S init configuration
+# Kubernetes version and kubeadm defaults
 #---------------------------------------------------
-# default variables, only change if u know what 
-# you are doing
-#---------------------------------------------------
+# Kubernetes version to install. Keep the leading "v" because image tags and
+# kubeadm config use this value directly.
 k8s_version: v1.31.4
+
+# Pod sandbox image used by containerd CRI. Keep this aligned with Kubernetes
+# version expectations and with the image mirrored in your private registry.
 containerd_sandbox_image: 'registry.k8s.io/pause:3.10'
+
+# CRI socket used by kubeadm, kubelet, and crictl. Change only if using a
+# different CRI endpoint.
 criSocket: "unix:///run/containerd/containerd.sock"
+
+# Certificate validity periods for Kubernetes-generated certificates.
+# 876000h is roughly 100 years; reduce this if your security policy requires
+# shorter certificate lifetimes.
 certificateValidityPeriod: 876000h
 caCertificateValidityPeriod: 876000h
+
+# API server audit log retention. These values are passed to kube-apiserver.
 apiserver_audit_log_maxage: 30
 apiserver_audit_log_maxbackup: 10
 apiserver_audit_log_maxsize: 100
+
+# Kubernetes control-plane tuning. Most clusters should keep these defaults
+# unless the design document requires a different API server/controller behavior.
 apiserver_authorization_mode: Node,RBAC
 apiserver_event_ttl: 168h
 apiserver_kubelet_preferred_address_types: InternalDNS,InternalIP,Hostname,ExternalDNS,ExternalIP
@@ -24,6 +38,9 @@ controllerManager_profiling: false
 dns_type: CoreDNS
 scheduler_bind_address: 0.0.0.0
 scheduler_profiling: false
+
+# Kubelet health, read-only port, image garbage collection, and resource
+# reservations. Review carefully for production nodes with small disks or memory.
 kubelet_healthzBindAddress: 0.0.0.0
 kubelet_healthzPort: 10248
 kubelet_readOnlyPort: 10255
@@ -42,30 +59,68 @@ kubelet_systemReserved: |-
   cpu: "200m"
   memory: "512Mi"
 kubelet_serverTLSBootstrap: true
+
+# Set to a CPU list such as "0-1" when using static CPU reservation. Leave empty
+# when the cluster does not require reserved system CPUs.
 kubelet_reservedSystemCPUs: ''
+
+# Kube-proxy bind addresses. 0.0.0.0 exposes health/metrics on all interfaces.
 kubeproxy_healthzBindAddress: 0.0.0.0:10256
 kubeproxy_metricsBindAddress: 0.0.0.0:10249
+
+# kubeadm feature gates. Add only feature gates supported by k8s_version.
 feature_gates:
   EtcdLearnerMode: false
-#-----------------------------------------------
-# Cluster Networking
-#-----------------------------------------------
-master_hybrid: true                              # To allow schedule pods on master node (master+worker hybrid mode)
+
+#---------------------------------------------------
+# Cluster networking
+#---------------------------------------------------
+# true allows pods to be scheduled on control-plane nodes by removing the
+# NoSchedule taint after CNI installation.
+master_hybrid: true
+
+# Cluster name and DNS domain used in kubeadm config and API cert SAN entries.
 clusterName: kubernetes
 networking_dnsDomain: cluster.local
-ip_autodetection_method_cidr: 1.255.0.0/24       # If use calico, this is required to set default K8S network       
-interface_k8s: eth0                              # interface used for K8S. In reality, it could be a bond0.1005, for example
-networking_podSubnet: 192.168.0.0/16              # IPAM CIDR for pods. This should match LLD
-networking_serviceSubnet: 10.96.0.0/12           # IAMP CIDR for services. This should match LLD.
-kubeproxy_bindAddress: 0.0.0.0                   # Kube-proxy bind all interfaces.
-controllerManager_bind_address: 0.0.0.0          # Kube controller Manager bind all interfaces
-localAPIEndpointAddress: "{{ hostvars[groups['master'][0]]['k8s_ip'] }}" # The node that do K8s Bootstrap, default is first master node
-localAPIEndpointPort: 6443                                               # API server port
-ha_apiserver_port: 8443               # HAProxy port binding for K8S API server
-k8s_master_ip: 1.255.0.155            # Keepalived VRRP VIP for K8S 
-cni_prime: calico                     # experimental for support installing any primary CNI. For now, just let it here
-multi_network: true                   # If use additional CNI, set it to true to install multus+whereabouts.
-multus_sriov: false                   # Require multi_network is true
+
+# Calico node IP auto-detection CIDR. Must match the node network used for k8s_ip.
+ip_autodetection_method_cidr: 1.255.0.0/24
+
+# Interface used by Keepalived VRRP. Change to the real Kubernetes/management
+# interface, for example bond0.1005.
+interface_k8s: eth0
+
+# Pod and Service CIDRs. These must not overlap with node, VIP, or external
+# routing networks.
+networking_podSubnet: 192.168.0.0/16
+networking_serviceSubnet: 10.96.0.0/12
+
+# Component bind addresses. 0.0.0.0 exposes on all interfaces.
+kubeproxy_bindAddress: 0.0.0.0
+controllerManager_bind_address: 0.0.0.0
+
+# Bootstrap API endpoint. Default is the first host in the [master] inventory
+# group. Change only for non-standard bootstrap topology.
+localAPIEndpointAddress: "{{ hostvars[groups['master'][0]]['k8s_ip'] }}"
+localAPIEndpointPort: 6443
+
+# HAProxy frontend port for Kubernetes API and Keepalived virtual IP.
+ha_apiserver_port: 8443
+k8s_master_ip: 1.255.0.155
+
+# Primary CNI. Current templates support calico. cilium is referenced but does
+# not currently have a matching cilium_init template list in image_file.yml.
+cni_prime: calico
+
+# Install Multus and Whereabouts in addition to the primary CNI.
+multi_network: true
+
+# Install SR-IOV-related manifests. Requires multi_network: true and node NIC
+# preparation outside this file.
+multus_sriov: false
+
+# Optional SR-IOV PF-to-VF configuration idea. This is not consumed by current
+# tasks unless templates/tasks are extended to use it.
 # list_pfs_to_vfs:
 #   - { pf_name: "ens1f1", nofvfs: 32}
 #   - { pf_name: "ens15f1", nofvfs: 32}
@@ -73,16 +128,20 @@ multus_sriov: false                   # Require multi_network is true
 #   - { pf_name: "ens15f2", nofvfs: 32}
 
 #---------------------------------------------------
-# keepalived VRRP
-# --------------------------------------------------
-keepalived_auth_pass: "3333"          # Authentication password for keepalived VRRP
-keepalived_vrrp_router_id: 151        # VRRP router ID, must match for all VRRP instances (master nodes)
+# Keepalived VRRP
+#---------------------------------------------------
+# VRRP authentication password and router ID. All master nodes must use the same
+# values. Router ID must be unique on the L2 segment.
+keepalived_auth_pass: "3333"
+keepalived_vrrp_router_id: 151
 
 #---------------------------------------------------
-# Container registry endpoint settings
+# Container registry endpoint
 #---------------------------------------------------
-# Image name example from this setting:
-# docker-registry:4000/registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
+# Private registry used for all Kubernetes images. Templates build image names as:
+# <registry_name>:<registry_port>/<upstream-image-path>:<tag>
+# Example:
+# harbor-registry:8017/registry.k8s.io/kube-apiserver:v1.31.4
 registry_protocol: https
 registry_ip: 10.55.112.146
 registry_name: harbor-registry
@@ -90,35 +149,29 @@ registry_port: 8017
 imageRepositoryProject: registry.k8s.io
 
 #---------------------------------------------------
-# Red Hat dnf/yum repo endpoint setting
+# Red Hat dnf/yum repository endpoint
 #---------------------------------------------------
+# Repository host written into /etc/hosts as "repository". Target nodes must be
+# able to download BaseOS, AppStream, codeready, docker-ce, and k8s-rh8 paths.
 repo_ip: 10.55.112.131
 repo_port: 80
 
 #---------------------------------------------------
-# Other k8s configs: etcd data dir, audit dir,...
+# Data, audit, and certificate paths
 #---------------------------------------------------
-k8s_auditlog_dir: /u01/k8saudit                                               # K8s Audit Logs directory 
-etcd_backup_dir: /u01/etcdbackup                                              # etcd backup directory
-etcdDataDir: /u01/etcd/                                                       # etcd data directory
-containerd_root_dir: /u01/containerd                                          # containerd data directory
-certificatesDir: /etc/kubernetes/pki                                          # K8s certs directories
-apiserver_kubelet_certificate_authority: "{{ certificatesDir }}/ca.crt"       # K8s path to CA certs
-master_user: ["root", "vt_admin"]                                             # user that have admin access to k8s cluster on master nodes.
-__rerun_bootstrap: true
+# These paths are created/used on target nodes. Ensure the backing filesystem has
+# enough capacity and survives node reboot.
+k8s_auditlog_dir: /u01/k8saudit
+etcd_backup_dir: /u01/etcdbackup
+etcdDataDir: /u01/etcd/
+containerd_root_dir: /u01/containerd
+certificatesDir: /etc/kubernetes/pki
+apiserver_kubelet_certificate_authority: "{{ certificatesDir }}/ca.crt"
 
-#---------------------------------------------------
-# Install service switches
-#---------------------------------------------------
-# Keep the full list for a complete Kubernetes install. Remove items, or override
-# with -e, when you want to run only one phase/service.
-# Example:
-# ansible-playbook -i inventory.ini site.yml -e 'k8s_install_services=["cni"]'
-k8s_install_services:
-  - node_bootstrap       # OS prep, repositories, kubelet/kubeadm/containerd, HA services on masters
-  - control_plane        # audit config, kubeadm manifests, image checks, kubeadm init, join command generation
-  - kubeconfig           # copy admin kubeconfig to master_user homes
-  - cni                  # Calico, optional Multus/Whereabouts/SR-IOV, CoreDNS rollout
-  - join_nodes           # join non-bootstrap masters and workers
-  - addons               # etcd jobs, metrics-server, kube-state-metrics
-  - static_pod_patch     # patch control-plane static pod resources/args
+# Users on master nodes that should receive ~/.kube/config. Missing users are
+# logged and ignored by the kubeconfig role.
+master_user: ["root", "vt_admin"]
+
+# Controls whether common bootstrap scripts are allowed to rerun. true resets
+# Kubernetes/CNI/etcd state, so use carefully on existing clusters.
+__rerun_bootstrap: true

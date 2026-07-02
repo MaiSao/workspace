@@ -1,0 +1,187 @@
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ocs-cgw-data-gx
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2433",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.96/27",
+      "range_start": "68.240.37.97",
+      "range_end": "68.240.37.98",
+      "gateway": "68.240.37.126"
+    }
+  }'
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ocs-cgw-data-gy
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2433",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.96/27",
+      "range_start": "68.240.37.99",
+      "range_end": "68.240.37.100",
+      "gateway": "68.240.37.126"
+    }
+  }'
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ocs-cgw-data-n7
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2433",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.96/27",
+      "range_start": "68.240.37.101",
+      "range_end": "68.240.37.102",
+      "gateway": "68.240.37.126"
+    }
+  }'
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ocs-cgw-data-n40
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2433",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.96/27",
+      "range_start": "68.240.37.103",
+      "range_end": "68.240.37.104",
+      "gateway": "68.240.37.126"
+    }
+  }'
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ocs-authen-server
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2436",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.32/28",
+      "range_start": "68.240.37.33",
+      "range_end": "68.240.37.34",
+      "gateway": "68.240.37.46"
+    }
+  }'
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ocs-cgw-pro
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2436",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.32/28",
+      "range_start": "68.240.37.35",
+      "range_end": "68.240.37.36",
+      "gateway": "68.240.37.46"
+    }
+  }'
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: ocs-app
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2433",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.96/27",
+      "range_start": "68.240.37.105",
+      "range_end": "68.240.37.119",
+      "gateway": "68.240.37.126"
+    }
+  }'
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: aerospike-app
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2433",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.96/27",
+      "range_start": "68.240.37.120",
+      "range_end": "68.240.37.125",
+      "gateway": "68.240.37.126"
+    }
+  }'
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: aerospike-linksite
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "bond2.2438",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "68.240.37.80/28",
+      "range_start": "68.240.37.81",
+      "range_end": "68.240.37.93",
+      "gateway": "68.240.37.94"
+    }
+  }'

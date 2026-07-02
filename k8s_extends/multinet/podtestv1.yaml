@@ -1,0 +1,27 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-macvlan
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-macvlan
+  template:
+    metadata:
+      labels:
+        app: test-macvlan
+      annotations:
+        k8s.v1.cni.cncf.io/networks: |
+          [{
+            "name": "ocs-cgw-data-gx",
+            "namespace": "default",
+            "interface": "app-net"
+          }]
+    spec:
+      containers:
+      - name: app
+        image: harbor-registry:8018/mano/busybox:1.37.0
+        command: ["sleep", "3600"]

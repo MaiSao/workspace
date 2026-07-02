@@ -1,0 +1,25 @@
+---
+- name: ensure audit policy file is not a directory (?)
+  shell: |
+    rm -rf /etc/kubernetes/audit-policy.yaml
+    mkdir -p /etc/kubernetes
+  when: >
+    'kubeadm_prepare' in k8s_install_services
+    and 'master' in group_names
+
+- name: generate audit polcicy config
+  template:
+    src: audit-policy.yaml.j2
+    dest: /etc/kubernetes/audit-policy.yaml
+  when: >
+    'kubeadm_prepare' in k8s_install_services
+    and 'master' in group_names
+
+- name: generate kubernetes install files
+  loop: "{{ kubeadm_init }}"
+  template:
+    src: "{{ item }}"
+    dest: "/root/kubebootstrap/{{ item | replace('.j2','') }}"
+  when: >
+    'kubeadm_prepare' in k8s_install_services
+    and inventory_hostname == groups['master'][0]

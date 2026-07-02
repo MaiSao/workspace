@@ -1,0 +1,70 @@
+---
+- name: set the bootstrap dir
+  tags: ["dryrun"]
+  set_fact:
+    __bootstrap_dir: /root/kubebootstrap
+    __session_time: "{{ now(utc=true, fmt='%Y-%m-%d %H:%M:%S') }}"
+    __registry_prefix: "{{ registry_name }}:{{ registry_port }}"
+
+- name: Build container images list based on selection CNI and CNI options
+  tags: ["dryrun"]
+  set_fact:
+    container_images: >-
+      {{
+        core_images + operation_images
+        + ( calico_images if cni_prime == 'calico'
+        else cilium_images if cni_prime == 'cilium'
+        else calico_images )
+        + (multus_images if multi_network | bool else [] )
+      }}
+
+- tags: ["debug", "dryrun"]
+  debug:
+    var: container_images
+
+- name: build init files lists
+  tags: ["dryrun"]
+  set_fact:
+    list_init_files: >-
+      {{
+        kubeadm_init
+        + (calico_init if cni_prime == 'calico'
+        else cilium_init if cni_prime == 'cilium'
+        else calico_init )
+        + coredns_init
+        + etcd_operation
+        + (multus_init if multi_network | bool else [])
+        + (sriov_init if multus_sriov | bool else [] )
+        + (add_on_self | list if add_on_self is defined)
+      }}
+
+- tags: ["debug", "dryrun"]
+  debug:
+    var: list_init_files
+
+- name: create bootstrap directory
+  file:
+    path: "{{ __bootstrap_dir }}/logs"
+    state: directory
+    recurse: yes
+
+- name: log session time
+  shell: |
+    echo {{ __session_time }} > {{ __bootstrap_dir }}/logs/latest_session_time
+
+- name: generate common bootstrap script for nodes
+  tags: ["dryrun"]
+  template:
+    src: common-bootstrap.sh.j2
+    dest: /root/kube-common-bootstrap.sh
+    mode: '0755'
+  when:
+    - "'common' in k8s_install_services"
+    - common_bootstrap_enabled | default(false) | bool
+
+- name: execute common bootstrap script
+  shell: bash /root/kube-common-bootstrap.sh | tee {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log
+  when:
+    - "'common' in k8s_install_services"
+    - common_bootstrap_enabled | default(false) | bool
+    - __rerun_bootstrap is defined

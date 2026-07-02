@@ -1,0 +1,165 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ippool-cleaner-script
+  namespace: kube-system
+data:
+  cleanup.sh: |
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+    echo "[INFO] START cleanup $(date)"
+
+    # log rõ dòng lỗi nếu có lỗi thật sự
+    trap 'echo "[WARN] Error at line $LINENO (ignored)"' ERR
+
+    DRY_RUN=${DRY_RUN:-true}
+    echo "🔍 Scanning stale allocations and reservations…"
+    # ───────────────── Allocations scan ─────────────────
+    kubectl get ippools.whereabouts.cni.cncf.io --all-namespaces \
+      -o jsonpath='{range .items[*]}{.metadata.namespace}{";"}{.metadata.name}{"\n"}{end}' | \
+    while IFS=';' read -r ns pool; do
+      echo "Pool: $pool (ns: $ns)"
+      kubectl get ippools.whereabouts.cni.cncf.io "$pool" -n "$ns" -o json | \
+        jq -c '.spec.allocations | to_entries[]?' | \
+        while read -r e; do
+          idx=$(echo "$e" | jq -r '.key')
+          alloc=$(echo "$e" | jq -c '.value')
+          id=$(echo "$alloc" | jq -r '.id')
+          podref=$(echo "$alloc" | jq -r '.podref // empty')
+          pod_ns=${podref%%/*}; pod_name=${podref##*/}
+          need_delete=false; reason=""
+          if [ -z "$podref" ] || ! kubectl get pod "$pod_name" -n "$pod_ns" &>/dev/null; then
+            need_delete=true; reason="Pod missing or podref empty"
+          else
+            real_ann=$(kubectl get pod "$pod_name" -n "$pod_ns" \
+              -o jsonpath='{.metadata.annotations.cni\.projectcalico\.org/containerID}' || echo "")
+            if [ "$real_ann" != "$id" ]; then
+              need_delete=true
+              reason="ID mismatch: allocation.id='$id' vs annotation='$real_ann'"
+            fi
+          fi
+          if $need_delete; then
+            echo "DELETE_CAND_ALLOC: pool=$pool ns=$ns idx=$idx id=$id podref=$podref"
+            echo "  Reason: $reason"
+            echo "  alloc: $alloc"
+            if [ "$DRY_RUN" = "false" ]; then
+              echo "  → Removing allocation idx $idx…"
+              kubectl patch ippools.whereabouts.cni.cncf.io "$pool" -n "$ns" \
+                --type=json \
+                -p="[ {\"op\":\"remove\",\"path\":\"/spec/allocations/$idx\"} ]" \
+                || echo "[WARN] Failed to remove allocation idx=$idx (ignored)"
+            fi
+          fi
+        done
+    done
+    # ───────────────── Reservation scan ─────────────────
+    kubectl get overlappingrangeipreservations.whereabouts.cni.cncf.io --all-namespaces -o json | \
+      jq -c '.items[]?' | while read -r obj; do
+        name=$(echo "$obj" | jq -r '.metadata.name')
+        ns=$(echo "$obj" | jq -r '.metadata.namespace')
+        podref=$(echo "$obj" | jq -r '.spec.podref // empty')
+        cid=$(echo "$obj" | jq -r '.spec.containerid // empty')
+        pod_ns=${podref%%/*}; pod_name=${podref##*/}
+        need_delete=false; reason=""
+        if [ -z "$podref" ] || ! kubectl get pod "$pod_name" -n "$pod_ns" &>/dev/null; then
+          need_delete=true; reason="Reservation pod missing or podref empty"
+        else
+          real_ann=$(kubectl get pod "$pod_name" -n "$pod_ns" \
+            -o jsonpath='{.metadata.annotations.cni\.projectcalico\.org/containerID}' || echo "")
+          if [ "$real_ann" != "$cid" ]; then
+            need_delete=true
+            reason="Reservation cid mismatch: spec.cid='$cid' vs annotation='$real_ann'"
+          fi
+        fi
+        if $need_delete; then
+          echo "DELETE_CAND_RESERV: name=$name ns=$ns podref=$podref cid=$cid"
+          echo "  Reason: $reason"
+          if [ "$DRY_RUN" = "false" ]; then
+            echo "  → Deleting reservation $name…"
+            kubectl delete overlappingrangeipreservations.whereabouts.cni.cncf.io "$name" -n "$ns" \
+              || echo "[WARN] Failed to delete reservation $name (ignored)"
+          fi
+        fi
+      done
+    echo "✅ COMPLETED. DRY_RUN=$DRY_RUN"          
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ippool-cleaner-sa
+  namespace: kube-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ippool-cleaner-role
+rules:
+- apiGroups: ["whereabouts.cni.cncf.io"]
+  resources:
+    - ippools
+    - overlappingrangeipreservations
+  verbs: ["get","list","patch","delete"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get","list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ippool-cleaner-binding
+subjects:
+- kind: ServiceAccount
+  name: ippool-cleaner-sa
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: ippool-cleaner-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ippool-cleaner
+  namespace: kube-system
+spec:
+  schedule: "0 0 * * *"   # chạy lúc 00:00 mỗi ngày :contentReference[oaicite:6]{index=6}
+  timeZone: "Asia/Ho_Chi_Minh"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1200
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: ippool-cleaner-sa
+          restartPolicy: Never
+          containers:
+          - name: cleaner
+            image: harbor-registry:8018/bitnami/kubectl:1.30.1
+            command: [ "/bin/bash", "/script/cleanup.sh"] 
+            terminationMessagePolicy: FallbackToLogsOnError
+            env:
+            - name: DRY_RUN
+              value: "false"   # set "false" để thực thi xóa
+            resources:
+              requests:
+                cpu: "100m"
+                memory: "50Mi"
+              limits:
+                cpu: "4"
+                memory: "500Mi"
+            volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+          volumes:
+          - name: script
+            configMap:
+              name: ippool-cleaner-script
+              defaultMode: 0755
+

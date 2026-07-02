@@ -1,0 +1,73 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etcd-defrag
+  namespace: kube-system
+spec:
+  concurrencyPolicy: Allow
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      creationTimestamp: null
+    spec:
+      completions: 1
+      parallelism: 1
+      template:
+        metadata:
+          creationTimestamp: null
+          labels:
+            task: etcd-defrag
+        spec:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchExpressions:
+                  - key: task
+                    operator: In
+                    values:
+                    - etcd-defrag
+                topologyKey: kubernetes.io/hostname
+          containers:
+          - command:
+            - /bin/sh
+            - -c
+            - etcdctl --endpoints=https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt
+              --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key
+              defrag --cluster
+            image: harbor-registry:8118/registry.k8s.io/etcd-backup:3.5.15
+            imagePullPolicy: IfNotPresent
+            name: etcd-defrag
+            resources:
+              limits:
+                cpu: 250m
+                memory: 250Mi
+              requests:
+                cpu: 25m
+                memory: 25Mi
+            terminationMessagePath: /dev/termination-log
+            terminationMessagePolicy: File
+            volumeMounts:
+            - mountPath: /etc/kubernetes/pki/etcd
+              name: etcd-certs
+              readOnly: true
+          dnsPolicy: ClusterFirst
+          hostNetwork: true
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: ""
+          restartPolicy: OnFailure
+          schedulerName: default-scheduler
+          securityContext: {}
+          terminationGracePeriodSeconds: 30
+          tolerations:
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/control-plane
+          volumes:
+          - hostPath:
+              path: /etc/kubernetes/pki/etcd
+              type: DirectoryOrCreate
+            name: etcd-certs
+  schedule: 0 1 * * *
+  successfulJobsHistoryLimit: 8
+  suspend: false
+  timeZone: Asia/Ho_Chi_Minh
