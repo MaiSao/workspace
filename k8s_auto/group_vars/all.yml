@@ -84,7 +84,7 @@ clusterName: kubernetes
 networking_dnsDomain: cluster.local
 
 # Calico node IP auto-detection CIDR. Must match the node network used for k8s_ip.
-ip_autodetection_method_cidr: 1.255.0.0/24
+ip_autodetection_method_cidr: 172.20.3.0/24
 
 # Interface used by Keepalived VRRP. Change to the real Kubernetes/management
 # interface, for example bond0.1005.
@@ -106,7 +106,7 @@ localAPIEndpointPort: 6443
 
 # HAProxy frontend port for Kubernetes API and Keepalived virtual IP.
 ha_apiserver_port: 8443
-k8s_master_ip: 1.255.0.155
+k8s_master_ip: 172.20.3.117
 
 # Primary CNI. Current templates support calico. cilium is referenced but does
 # not currently have a matching cilium_init template list in services.yml.
@@ -142,9 +142,9 @@ keepalived_vrrp_router_id: 151
 # <registry_name>:<registry_port>/<upstream-image-path>:<tag>
 # Example:
 # harbor-registry:8017/registry.k8s.io/kube-apiserver:v1.31.4
-registry_protocol: https
-registry_ip: 10.55.112.146
-registry_name: harbor-registry
+registry_protocol: http
+registry_ip: 172.20.3.71
+registry_name: docker-registry
 registry_port: 8017
 imageRepositoryProject: registry.k8s.io
 
@@ -153,8 +153,8 @@ imageRepositoryProject: registry.k8s.io
 #---------------------------------------------------
 # Repository host written into /etc/hosts as "repository". Target nodes must be
 # able to download BaseOS, AppStream, codeready, docker-ce, and k8s-rh8 paths.
-repo_ip: 10.55.112.131
-repo_port: 80
+repo_ip: 172.20.3.71
+repo_port: 8080
 
 #---------------------------------------------------
 # Data, audit, and certificate paths
