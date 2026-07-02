@@ -4,7 +4,7 @@ Title: Install Kubernetes guide
 
 ## Overview
 
-This directory contains an Ansible-based Kubernetes installer. The main entry point is `site.yml`, which runs split roles for node prep, containerd, HA, kubeadm, CNI, add-ons, and patching. Install phases are controlled by the dynamic service catalog in `group_vars/services.yml`.
+This directory contains an Ansible-based Kubernetes installer. The main entry point is `site.yml`, a single play that targets all nodes and lists each split role once. Each role decides what to do from host group membership and `group_vars/services.yml`.
 
 Default behavior is still a full install. You only need to change service variables when you want to skip built-in phases or add future extra service roles.
 
@@ -19,7 +19,7 @@ Default behavior is still a full install. You only need to change service variab
 - Use either Docker Registry or Harbor.
 - For production, use a highly available registry.
 - Confirm `registry_name`, `registry_ip`, `registry_port`, and `registry_protocol` in `group_vars/all.yml`.
-- Confirm image lists in `group_vars/image_file.yml` match the Kubernetes and add-on versions you plan to install.
+- Confirm image lists in `group_vars/images.yml` match the Kubernetes and add-on versions you plan to install.
 
 ## 3. Prepare Ansible Inventory
 
@@ -40,9 +40,8 @@ Place the final inventory at `k8s_auto/inventory.ini`.
 Review these files before running:
 
 - `group_vars/all.yml`: Kubernetes version, networking, registry, repo, VIP, audit, etcd, containerd, and bootstrap settings.
-- `group_vars/image_file.yml`: images and manifest template lists.
-- `group_vars/master.yml`: control-plane static pod resource requests and limits.
-- `group_vars/services.yml`: install phase selection and future extra service catalog.
+- `group_vars/images.yml`: image names and image pull checklists.
+- `group_vars/services.yml`: install phase selection, manifest template lists, extra service catalog, and static pod resources.
 
 ## 5. Role Layout
 
@@ -60,6 +59,8 @@ roles/services/k8s_cni/       Calico, Multus, Whereabouts, SR-IOV, CoreDNS
 roles/services/k8s_addons/    metrics-server, kube-state-metrics, etcd jobs
 roles/k8s_patch/              static pod resource/argument patching
 ```
+
+`site.yml` runs these roles once per node in the order shown by the playbook. Role-level `when` checks restrict master-only work, first-master work, worker joins, and optional services.
 
 ## 6. Service Catalog
 
@@ -123,4 +124,13 @@ Then run:
 ansible-playbook -i inventory.ini extra-services.yml
 ```
 
-By default, `k8s_enabled_extra_services` is empty, so `extra-services.yml` does nothing until you add service roles.
+Current extra services in `group_vars/services.yml`:
+
+```yaml
+k8s_enabled_extra_services:
+  - name: kubelet_csr_approver
+    role: services/kubelet_csr_approver
+    enabled: true
+```
+
+This installs the kubelet CSR approver from `roles/services/kubelet_csr_approver`.

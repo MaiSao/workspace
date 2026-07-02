@@ -2,14 +2,18 @@
 - name: build add-on manifest file list
   set_fact:
     __addon_manifest_files: "{{ etcd_operation + ((add_on_self | list) if add_on_self is defined else []) }}"
-  when: "'addons' in k8s_install_services"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'addons' in k8s_install_services"
 
 - name: generate add-on manifests
   loop: "{{ __addon_manifest_files }}"
   template:
     src: "{{ item }}"
     dest: "/root/kubebootstrap/{{ item | replace('.j2','') }}"
-  when: "'addons' in k8s_install_services"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'addons' in k8s_install_services"
 
 - name: create etcd backup/rotate/defrag cronjob, install metric server
   shell: |
@@ -21,4 +25,6 @@
         -f {{ __bootstrap_dir }}/kube-state-metrics.yaml
       EOF
       bash /root/post-deploy.sh | tee {{ __bootstrap_dir }}/logs/post-deploy.{{ __session_time }}.log
-  when: "'addons' in k8s_install_services"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'addons' in k8s_install_services"

@@ -109,7 +109,7 @@ ha_apiserver_port: 8443
 k8s_master_ip: 1.255.0.155
 
 # Primary CNI. Current templates support calico. cilium is referenced but does
-# not currently have a matching cilium_init template list in image_file.yml.
+# not currently have a matching cilium_init template list in services.yml.
 cni_prime: calico
 
 # Install Multus and Whereabouts in addition to the primary CNI.

@@ -1,0 +1,69 @@
+#---------------------------------------------------
+# Image variables and pull checklists
+#---------------------------------------------------
+# Edit these values when changing image repositories or versions. Image lists
+# and rendered Kubernetes manifests reference these variables, so one change here
+# updates both the pre-pull checklist and applied YAML.
+#---------------------------------------------------
+
+#---------------------------------------------------
+# Named image variables
+#---------------------------------------------------
+cilium_image: cilium/cilium:1.18.5
+calico_cni_image: calico/cni:v3.28.2
+calico_kube_controllers_image: calico/kube-controllers:v3.28.2
+calico_node_image: calico/node:v3.28.2
+whereabouts_image: vht/ocs/whereabouts:0.5.4-22-d05f10dc
+multus_cni_image: k8snetworkplumbingwg/multus-cni:v4.1.3
+sriov_device_plugin_image: k8snetworkplumbingwg/sriov-network-device-plugin:v3.8.0
+kubectl_image: bitnami/kubectl:1.30.1
+etcd_backup_image: registry.k8s.io/etcd-backup:3.5.15
+etcd_image: registry.k8s.io/etcd:3.5.15-0
+metrics_server_image: k8s.gcr.io/metrics-server/metrics-server:v0.8.0
+kube_state_metrics_image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
+kubelet_csr_approver_image: registry.k8s.io/kubelet-csr-approver:v1.2.11
+coredns_image: registry.k8s.io/coredns:v1.11.3
+kube_apiserver_image: "registry.k8s.io/kube-apiserver:{{ k8s_version }}"
+kube_controller_manager_image: "registry.k8s.io/kube-controller-manager:{{ k8s_version }}"
+kube_proxy_image: "registry.k8s.io/kube-proxy:{{ k8s_version }}"
+kube_scheduler_image: "registry.k8s.io/kube-scheduler:{{ k8s_version }}"
+pause_image: registry.k8s.io/pause:3.10
+
+#---------------------------------------------------
+# Image pull lists
+#---------------------------------------------------
+# These lists are used by kubeadm_control_plane to verify images are available
+# from the configured registry before kubeadm init and add-on installation.
+#---------------------------------------------------
+
+# Optional Cilium support. Note: cni_prime: cilium also needs a cilium_init
+# template list and matching template before it can be used safely.
+cilium_images:
+  - "{{ cilium_image }}"
+
+# Calico images for the default primary CNI.
+calico_images:
+  - "{{ calico_cni_image }}"
+  - "{{ calico_kube_controllers_image }}"
+  - "{{ calico_node_image }}"
+
+# Multus and Whereabouts images used when multi_network: true.
+multus_images:
+  - "{{ whereabouts_image }}"
+  - "{{ multus_cni_image }}"
+
+# Operational add-on images used by services/k8s_addons.
+operation_images:
+  - "{{ etcd_backup_image }}"
+  - "{{ metrics_server_image }}"
+  - "{{ kube_state_metrics_image }}"
+
+# Core Kubernetes images. k8s_version comes from group_vars/all.yml.
+core_images:
+  - "{{ coredns_image }}"
+  - "{{ etcd_image }}"
+  - "{{ kube_apiserver_image }}"
+  - "{{ kube_controller_manager_image }}"
+  - "{{ kube_proxy_image }}"
+  - "{{ kube_scheduler_image }}"
+  - "{{ pause_image }}"

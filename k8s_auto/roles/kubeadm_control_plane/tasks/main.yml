@@ -3,7 +3,9 @@
   loop: "{{ container_images }}"
   shell: |
     crictl pull {{ __registry_prefix }}/{{ item }}
-  when: "'kubeadm_control_plane' in k8s_install_services"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'kubeadm_control_plane' in k8s_install_services"
 
 - name: init cluster
   register: __init_cluster
@@ -19,28 +21,37 @@
     kubeadm init --upload-certs --config $KUBEADMF
     EOF
     bash /root/init-k8s.sh | tee {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log
-  when: "'kubeadm_control_plane' in k8s_install_services"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'kubeadm_control_plane' in k8s_install_services"
 
 - tags: ["debug"]
   debug:
     var: __init_cluster.stdout_lines
   when:
     - "'kubeadm_control_plane' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
     - __init_cluster is defined
 
 - name: print join node command
   register: __join_command
   shell: kubeadm token create --print-join-command
   when: >
-    'kubeadm_control_plane' in k8s_install_services
-    or 'kubeadm_join' in k8s_install_services
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm_control_plane' in k8s_install_services
+      or 'kubeadm_join' in k8s_install_services
+    )
 
 - name: re-upload key
   register: __cert_key
   shell: kubeadm init phase upload-certs --upload-certs
   when: >
-    'kubeadm_control_plane' in k8s_install_services
-    or 'kubeadm_join' in k8s_install_services
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm_control_plane' in k8s_install_services
+      or 'kubeadm_join' in k8s_install_services
+    )
 
 - name: join control plane
   set_fact:
@@ -49,8 +60,11 @@
     worker_join: |
       {{ __join_command.stdout }}
   when: >
-    'kubeadm_control_plane' in k8s_install_services
-    or 'kubeadm_join' in k8s_install_services
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm_control_plane' in k8s_install_services
+      or 'kubeadm_join' in k8s_install_services
+    )
 
 - tags: ["debug"]
   debug:
@@ -58,8 +72,11 @@
       {{ control_join }}
       {{ worker_join }}
   when: >
-    'kubeadm_control_plane' in k8s_install_services
-    or 'kubeadm_join' in k8s_install_services
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm_control_plane' in k8s_install_services
+      or 'kubeadm_join' in k8s_install_services
+    )
 
 - name: regen script for used later
   shell: |
@@ -80,5 +97,8 @@
     EOM
     EOF
   when: >
-    'kubeadm_control_plane' in k8s_install_services
-    or 'kubeadm_join' in k8s_install_services
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm_control_plane' in k8s_install_services
+      or 'kubeadm_join' in k8s_install_services
+    )

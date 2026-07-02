@@ -1,10 +1,10 @@
 ---
-- name: Prepare all Kubernetes nodes
+- name: Install Kubernetes cluster
   hosts: all
   gather_facts: yes
   vars_files:
-    - group_vars/image_file.yml
     - group_vars/all.yml
+    - group_vars/images.yml
     - group_vars/services.yml
   roles:
     - role: common
@@ -13,97 +13,19 @@
       tags: common
     - role: containerd
       tags: containerd
-
-- name: Configure Kubernetes API HA
-  hosts: master
-  gather_facts: yes
-  vars_files:
-    - group_vars/image_file.yml
-    - group_vars/all.yml
-    - group_vars/services.yml
-  roles:
     - role: k8s_ha
       tags: k8s_ha
-
-- name: Prepare kubeadm files on masters
-  hosts: master
-  gather_facts: yes
-  vars_files:
-    - group_vars/image_file.yml
-    - group_vars/all.yml
-    - group_vars/services.yml
-  roles:
-    - role: common
-      tags: always
     - role: kubeadm_prepare
       tags: kubeadm_prepare
-
-- name: Initialize first control-plane node
-  hosts: master[0]
-  gather_facts: yes
-  vars_files:
-    - group_vars/image_file.yml
-    - group_vars/all.yml
-    - group_vars/services.yml
-  roles:
-    - role: common
-      tags: always
     - role: kubeadm_control_plane
       tags: kubeadm_control_plane
     - role: kubeconfig
       tags: kubeconfig
     - role: services/k8s_cni
       tags: cni
-
-- name: Join remaining Kubernetes nodes
-  hosts: all:!master[0]
-  gather_facts: yes
-  vars_files:
-    - group_vars/image_file.yml
-    - group_vars/all.yml
-    - group_vars/services.yml
-  roles:
-    - role: common
-      tags: always
     - role: kubeadm_join
       tags: kubeadm_join
-
-- name: Configure kubeconfig on non-bootstrap masters
-  hosts: master:!master[0]
-  gather_facts: yes
-  vars_files:
-    - group_vars/image_file.yml
-    - group_vars/all.yml
-    - group_vars/services.yml
-  roles:
-    - role: common
-      tags: always
-    - role: kubeconfig
-      tags: kubeconfig
-
-- name: Install Kubernetes add-ons
-  hosts: master[0]
-  gather_facts: yes
-  vars_files:
-    - group_vars/image_file.yml
-    - group_vars/all.yml
-    - group_vars/services.yml
-  roles:
-    - role: common
-      tags: always
     - role: services/k8s_addons
       tags: addons
-
-- name: Patch control-plane static pods
-  hosts: master
-  gather_facts: yes
-  vars_files:
-    - group_vars/image_file.yml
-    - group_vars/all.yml
-    - group_vars/master.yml
-    - group_vars/services.yml
-  roles:
-    - role: common
-      tags: always
     - role: k8s_patch
       tags: k8s_patch

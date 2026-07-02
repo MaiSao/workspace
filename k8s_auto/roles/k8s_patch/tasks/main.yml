@@ -18,5 +18,7 @@
       resources: {requests: {cpu: "{{ scheduler_requests_cpu }}", memory: "{{ scheduler_requests_memory }}"}, limits: {cpu: "{{ scheduler_limits_cpu }}", memory: "{{ scheduler_limits_memory }}"}}
       args:
         - "--profiling=false"
-  when: "'k8s_patch' in k8s_install_services"
+  when:
+    - "'master' in group_names"
+    - "'k8s_patch' in k8s_install_services"
   tags: patch

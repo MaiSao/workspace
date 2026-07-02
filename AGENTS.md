@@ -6,7 +6,7 @@ This repository contains an Ansible-based Kubernetes installer under `k8s_auto/`
 
 - `k8s_auto/site.yml`: main playbook entry point.
 - `k8s_auto/inventory.ini`: target host inventory; define `master` and worker hosts here.
-- `k8s_auto/group_vars/`: cluster-wide configuration, image lists, and control-plane resource values.
+- `k8s_auto/group_vars/`: three operator files: `all.yml` for cluster/environment settings, `images.yml` for image names and pull lists, and `services.yml` for install phases, manifests, extra services, and static pod resources.
 - `k8s_auto/roles/common/`, `containerd/`, `k8s_ha/`, `kubeadm_*`, `kubeconfig/`, and `k8s_patch/`: active base install roles.
 - `k8s_auto/roles/services/`: active Kubernetes service roles such as CNI and add-ons.
 
@@ -68,14 +68,35 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 ## Change Log For Multi-Role Split
 
 - Split the active install flow out of the old monolithic role into role-owned phases: `common`, `containerd`, `k8s_ha`, `kubeadm_prepare`, `kubeadm_control_plane`, `kubeadm_join`, `kubeconfig`, `services/k8s_cni`, `services/k8s_addons`, and `k8s_patch`.
-- Updated `k8s_auto/site.yml` to run those roles in the original install order: node prep, containerd, HA, kubeadm prepare/init, kubeconfig, CNI, join, non-bootstrap master kubeconfig, add-ons, and static pod patching.
+- Updated `k8s_auto/site.yml` to a single `hosts: all` play that lists each split role once. Role-level `when` checks restrict first-master, master-only, worker, and optional-service work.
 - Updated `k8s_auto/group_vars/services.yml` service names to match the new roles. Default full install still runs when using `ansible-playbook -i inventory.ini site.yml`.
-- Split the old bootstrap responsibilities into `common-bootstrap.sh.j2`, `containerd-bootstrap.sh.j2`, and `k8s-ha-bootstrap.sh.j2`. `common` is safely reused in later plays only for shared facts; its destructive bootstrap script runs only when `common_bootstrap_enabled: true` in the first play.
+- Split the old bootstrap responsibilities into `common-bootstrap.sh.j2`, `containerd-bootstrap.sh.j2`, and `k8s-ha-bootstrap.sh.j2`. The destructive common bootstrap script runs only when `common_bootstrap_enabled: true`.
 - Moved CNI and add-on manifest rendering into their owning service roles so templates live with the role that applies them.
 - Removed the old unused `roles/kubernetes-optimized/` directory after the active `site.yml` moved fully to split roles.
 
 ## Change Log For Unused File Cleanup
 
-- Removed unused active service templates that were not referenced by `group_vars/image_file.yml`: `etcd-backup-cronjob.yaml.j2`, `etcd-rotate-cronjob.yaml.j2`, `metric-server-v0.6.1.yaml.j2`, and `calico-v3.29.1.yaml.j2`.
+- Removed unused active service templates that were not referenced by the manifest lists now kept in `group_vars/services.yml`: `etcd-backup-cronjob.yaml.j2`, `etcd-rotate-cronjob.yaml.j2`, `metric-server-v0.6.1.yaml.j2`, and `calico-v3.29.1.yaml.j2`.
 - Removed now-unused image variables for deleted templates: `etcd_legacy_backup_image` and `metrics_server_v0_6_image`.
 - Removed the old unused `k8s_auto/roles/kubernetes-optimized/` role directory. Active installs use the split roles in `site.yml`.
+
+## Change Log For Single-Play Site
+
+- Simplified `k8s_auto/site.yml` to one play named `Install Kubernetes cluster` with `hosts: all`.
+- Listed every active role once so a role cannot be invoked multiple times on the same node by the playbook structure.
+- Added/kept role-level host guards so master-only roles, first-master roles, worker joins, add-ons, and patching run only where intended.
+
+## Change Log For Kubelet CSR Approver
+
+- Added `roles/services/kubelet_csr_approver` as an extra service role.
+- Converted the source manifest from `k8s_extends/kubelet-csr-approver/kubelet-csr-approver.yaml` into a Jinja template using `kubelet_csr_approver_image`.
+- Added `kubelet_csr_approver_image` to `group_vars/images.yml`.
+- Registered the service in `group_vars/services.yml` under `k8s_enabled_extra_services`, so it runs with `ansible-playbook -i inventory.ini extra-services.yml`.
+
+## Change Log For Group Vars Restructure
+
+- Consolidated `k8s_auto/group_vars/` into three active files: `all.yml`, `images.yml`, and `services.yml`.
+- Replaced `image_file.yml` with `images.yml`; image variables and pull lists now live there.
+- Moved manifest template lists and control-plane static pod resource values into `services.yml`.
+- Removed the old `master.yml`; its resource values now live in `services.yml`.
+- Updated `site.yml`, `extra-services.yml`, `README.md`, and this guide to reference the new file layout.

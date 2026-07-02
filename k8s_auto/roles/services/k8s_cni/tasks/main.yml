@@ -10,14 +10,18 @@
         + (multus_init if multi_network | bool else [])
         + (sriov_init if multus_sriov | bool else [] )
       }}
-  when: "'cni' in k8s_install_services"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'cni' in k8s_install_services"
 
 - name: generate CNI manifests
   loop: "{{ __cni_manifest_files }}"
   template:
     src: "{{ item }}"
     dest: "/root/kubebootstrap/{{ item | replace('.j2','') }}"
-  when: "'cni' in k8s_install_services"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'cni' in k8s_install_services"
 
 - name: install CNI
   shell: |
@@ -48,4 +52,6 @@
     kubectl rollout restart deployment/coredns -n kube-system
     EOF
     bash /root/install-cni.sh | tee {{ __bootstrap_dir }}/logs/install-cni.{{ __session_time }}.log
-  when: "'cni' in k8s_install_services"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'cni' in k8s_install_services"

@@ -93,17 +93,87 @@ k8s_service_catalog:
     description: Patch control-plane static pod resources and arguments.
 
 #---------------------------------------------------
+# Manifest template lists
+#---------------------------------------------------
+# File names must exist under the owning role's templates/ directory.
+# kubeadm_init: roles/kubeadm_prepare/templates/
+# calico_init, coredns_init, multus_init, sriov_init:
+#   roles/services/k8s_cni/templates/
+# etcd_operation, add_on_self:
+#   roles/services/k8s_addons/templates/
+#---------------------------------------------------
+
+# kubeadm bootstrap configuration rendered before kubeadm init.
+kubeadm_init:
+  - kubeadm-config.yaml.j2
+
+# Primary Calico manifest rendered when cni_prime: calico.
+calico_init:
+  - calico-v3.28.2.yaml.j2
+
+# CoreDNS override and NodePort service manifest.
+coredns_init:
+  - coredns.yaml.j2
+
+# etcd operational CronJobs rendered by services/k8s_addons.
+etcd_operation:
+  - etcd-backup-rotate-cronjob.yaml.j2
+  - etcd-defrag.yaml.j2
+
+# Multus and Whereabouts manifests rendered when multi_network: true.
+multus_init:
+  - multus-daemonset_v4.1.3.yaml.j2
+  - whereabouts_daemonset_install.yaml.j2
+  - whereabouts_ippools-cleaner.yaml.j2
+  - whereabouts_ippools.yaml.j2
+
+# SR-IOV manifests rendered when multus_sriov: true.
+sriov_init:
+  - sriov_configMap.yaml.j2
+  - sriovdp-daemonsetv3.8.0.yaml.j2
+  - whereabouts-net-sriov-bond.yaml.j2
+
+# Additional cluster add-ons rendered by services/k8s_addons.
+add_on_self:
+  - kube-state-metrics.yaml.j2
+  - metric-server-v0.8.0.yaml.j2
+
+#---------------------------------------------------
+# Control-plane static pod resource sizing
+#---------------------------------------------------
+# These values are used by roles/k8s_patch to update static pod manifests under:
+# /etc/kubernetes/manifests/
+#---------------------------------------------------
+etcd_requests_cpu: "100m"
+etcd_requests_memory: "128Mi"
+etcd_limits_cpu: "2"
+etcd_limits_memory: "4Gi"
+
+apiserver_requests_cpu: "100m"
+apiserver_requests_memory: "128Mi"
+apiserver_limits_cpu: "2"
+apiserver_limits_memory: "4Gi"
+
+controller_manager_requests_cpu: "100m"
+controller_manager_requests_memory: "128Mi"
+controller_manager_limits_cpu: "2"
+controller_manager_limits_memory: "4Gi"
+
+scheduler_requests_cpu: "100m"
+scheduler_requests_memory: "128Mi"
+scheduler_limits_cpu: "2"
+scheduler_limits_memory: "4Gi"
+
+#---------------------------------------------------
 # Future extra service roles
 #---------------------------------------------------
-# This list is consumed by extra-services.yml and is empty by default. Add entries
-# here after creating a role under roles/services/.
-#
-# Example:
-# k8s_enabled_extra_services:
-#   - name: ingress_nginx
-#     role: services/k8s_ingress_nginx
-#     enabled: true
+# This list is consumed by extra-services.yml. Add entries here after creating a
+# role under roles/services/. Set enabled: false to keep a service registered but
+# skip installation.
 #
 # Run extra services:
 #   ansible-playbook -i inventory.ini extra-services.yml
-k8s_enabled_extra_services: []
+k8s_enabled_extra_services:
+  - name: kubelet_csr_approver
+    role: services/kubelet_csr_approver
+    enabled: true

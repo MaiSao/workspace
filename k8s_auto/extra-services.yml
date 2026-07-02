@@ -3,8 +3,8 @@
   hosts: "{{ k8s_services_host | default('master[0]') }}"
   gather_facts: yes
   vars_files:
-    - group_vars/image_file.yml
     - group_vars/all.yml
+    - group_vars/images.yml
     - group_vars/services.yml
   tasks:
     - name: Install enabled extra service roles
