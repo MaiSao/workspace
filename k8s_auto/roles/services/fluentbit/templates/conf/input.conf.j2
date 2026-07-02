@@ -1,0 +1,234 @@
+{% if fluentbit_profiles.audit | default(true) | bool %}
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias audit-k8s
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEM_SIZE}
+    Tag audit.k8s
+    Offset_Key On
+    Path {{ fluentbit_host_paths.k8s_audit }}/audit.log
+    Key raw_message
+    DB /data/db/k8s-audit.db
+    Multiline On
+    Parser_Firstline audit
+    Skip_Long_Lines On
+    skip_empty_lines On
+    Static_Batch_Size 10MB
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+{% endif %}
+
+{% if fluentbit_profiles.systemd | default(true) | bool %}
+[INPUT]
+    Name systemd
+    Alias kubelet
+    Tag host.kubelet
+    Path /run/log/journal
+    Systemd_Filter _SYSTEMD_UNIT=kubelet.service
+    Read_From_Tail On
+[INPUT]
+    Name systemd
+    Alias containerd
+    Tag host.containerd
+    Systemd_Filter _SYSTEMD_UNIT=containerd.service
+    Path /run/log/journal
+    Read_From_Tail On
+[INPUT]
+    Name systemd
+    Alias haproxy
+    Tag host.haproxy
+    Systemd_Filter _SYSTEMD_UNIT=haproxy.service
+    Path /run/log/journal
+    Read_From_Tail On
+[INPUT]
+    Name systemd
+    Alias keepalived
+    Tag host.keepalived
+    Systemd_Filter _SYSTEMD_UNIT=keepalived.service
+    Path /run/log/journal
+    Read_From_Tail On
+{% endif %}
+
+{% if fluentbit_profiles.kube_containers | default(true) | bool %}
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias kubepods
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEDIUM_MEM_SIZE}
+    Tag vocs40.kube
+    Offset_Key On
+    Path /var/log/containers/*.log
+    Exclude_Path  /var/log/containers/*fluent-bit*.log
+    Path_Key log_path
+    Key raw_message
+    Multiline On
+    DB  /data/db/flb-kube-svc.db
+    Parser_Firstline cri
+    Skip_Long_Lines On
+    skip_empty_lines On
+    Static_Batch_Size 10MB
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+{% endif %}
+
+{% if fluentbit_profiles.mano | default(true) | bool %}
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias mano
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEM_SIZE}
+    Tag vocs40.mano
+    Offset_Key On
+    Path {{ fluentbit_host_paths.mano_data }}/mano-services/*/*/*/*/*.log
+    Path_Key log_path
+    Key raw_message
+    Multiline On
+    DB  /data/db/ocs-mano.db
+    Parser_Firstline mano.standard
+    Skip_Long_Lines On
+    skip_empty_lines On
+    Static_Batch_Size 10MB
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias mano-agents
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEM_SIZE}
+    Tag vocs40.ocs.mano-agents
+    Offset_Key On
+    Path {{ fluentbit_host_paths.vnf_data }}/mano-agents*/*/*/*/*.log
+    Path_Key log_path
+    Key raw_message
+    Multiline On
+    DB  /data/db/ocs-mano-agents.db
+    Parser_Firstline ocs.mano.standard
+    Skip_Long_Lines On
+    skip_empty_lines On
+    Static_Batch_Size 10MB
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias mano-mongodb
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEM_SIZE}
+    Tag vocs40.mano.mongodb
+    Offset_Key On
+    Path {{ fluentbit_host_paths.mongodb }}/log/*.log
+    Path_Key log_path
+    Key raw_message
+    Multiline On
+    DB  /data/db/mongodb.db
+    Parser_Firstline mongodb
+    Skip_Long_Lines On
+    skip_empty_lines On
+    Static_Batch_Size 10MB
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+{% endif %}
+
+{% if fluentbit_profiles.mda | default(true) | bool %}
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias mda-jsonl-tail
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEM_SIZE}
+    Tag mda-jsonl-tag
+    Offset_Key On
+    Path {{ fluentbit_host_paths.mda_data }}/*/*/*/*/*.jsonl
+    Path_Key log_path
+    Multiline Off
+    DB  /data/db/mda-jsonl.db
+    Parser mda-jsonl-parser
+    Skip_Long_Lines On
+    skip_empty_lines On
+    Static_Batch_Size 10MB
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+{% endif %}
+
+{% if fluentbit_profiles.mysql | default(true) | bool %}
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias mda-mysql-audit
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEM_SIZE}
+    Tag mda-mysql-audit
+    Offset_Key On
+    Path {{ fluentbit_host_paths.mda_data }}/mysql/data/*/audit.log
+    Path_Key log_path
+    Key raw
+    DB  /data/db/mysqlaudit.db
+    Parser mysql_audit_json
+    Static_Batch_Size 10MB
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias mda-mysql-slow
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEM_SIZE}
+    Tag mda-mysql-slow
+    Offset_Key On
+    Path {{ fluentbit_host_paths.mda_data }}/mysql/data/*/slow_query.log
+    Path_Key log_path
+    DB  /data/db/mysqlslow.db
+    Multiline.Parser mysql_slow_multiline
+    Static_Batch_Size 10MB
+    Skip_Long_Lines On
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+    Read_From_Head On
+{% endif %}
+
+{% if fluentbit_profiles.ocs | default(true) | bool %}
+[INPUT]
+    Name tail
+    Refresh_Interval 5
+    Rotate_Wait 600
+    Alias ocs
+    Buffer_Chunk_Size ${CHUNK_SIZE}
+    Buffer_Max_Size ${BUFF_SIZE}
+    Mem_Buf_Limit ${MEDIUM_MEM_SIZE}
+    Tag vocs40.ocs
+    Offset_Key On
+    Path {{ fluentbit_host_paths.mano_data }}/VNF/*ocs*/*/*/*/*.log
+    Path_Key log_path
+    Key raw_message
+    Multiline On
+    DB /data/db/ocs-cnf.db
+    Parser_Firstline ocs.standard
+    Skip_Long_Lines On
+    skip_empty_lines On
+    Static_Batch_Size 10MB
+    storage.type filesystem
+    storage.pause_on_chunks_overlimit off
+{% endif %}

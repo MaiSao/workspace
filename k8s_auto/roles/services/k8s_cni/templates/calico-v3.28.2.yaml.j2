@@ -4970,12 +4970,7 @@ spec:
           securityContext:
             privileged: true
           resources:
-            requests:
-              cpu: 100m
-              memory: 500Mi
-            limits:
-              cpu: 500m
-              memory: 1Gi             
+{{ k8s_resources.calico_node | to_nice_yaml(indent=2) | indent(12, true) }}
           lifecycle:
             preStop:
               exec:
@@ -5126,12 +5121,7 @@ spec:
             - name: DATASTORE_TYPE
               value: kubernetes
           resources:
-            requests:
-              cpu: 50m
-              memory: 250Mi
-            limits:
-              cpu: 1
-              memory: 2Gi 
+{{ k8s_resources.calico_kube_controllers | to_nice_yaml(indent=2) | indent(12, true) }}
           livenessProbe:
             exec:
               command:

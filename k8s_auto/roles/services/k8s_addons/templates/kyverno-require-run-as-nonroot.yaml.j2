@@ -1,0 +1,37 @@
+{% raw %}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: enforce-run-as-nonroot
+  annotations:
+    policies.kyverno.io/title: Enforce Pod Security
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Enforces security context settings for pods excluding specified namespaces.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: enforce-run-as-nonroot-context
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+      exclude:
+        any:
+        - resources:
+            namespaces:
+              - kube-system
+              - fluentbit
+      mutate:
+        patchStrategicMerge:
+          spec:
+            containers:
+              - (name): "*"
+                securityContext:
+                  runAsNonRoot: true
+
+{% endraw %}

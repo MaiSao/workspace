@@ -185,12 +185,7 @@ spec:
           initialDelaySeconds: 20
           periodSeconds: 10
         resources:
-          limits:
-            cpu: 500m
-            memory: 1Gi
-          requests:
-            cpu: 100m
-            memory: 250Mi
+{{ k8s_resources.metrics_server | to_nice_yaml(indent=2) | indent(10, true) }}
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true

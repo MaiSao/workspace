@@ -36,12 +36,7 @@ spec:
             imagePullPolicy: IfNotPresent
             name: etcd-backup-rotate
             resources:
-              limits:
-                cpu: "4"
-                memory: 8Gi
-              requests:
-                cpu: 100m
-                memory: 2Gi
+{{ k8s_resources.etcd_backup | to_nice_yaml(indent=2) | indent(14, true) }}
             terminationMessagePath: /dev/termination-log
             terminationMessagePolicy: File
             volumeMounts:

@@ -6,60 +6,17 @@ metadata:
 data:
   config.json: |
     {
-        "resourceList": [
-           {
-                "resourceName": "app_net_1",
-                "selectors": {
-                    "vendors": ["8086","14e4"],
-                    "devices": ["154c","16dc", "1593","1889"],
-                    "drivers": ["iavf","bnxt_en"],
-                    "pfNames": ["ens7f0#0-63"]
-                }
-            },
-            {
-                "resourceName": "app_net_2",
-                "selectors": { 
-                    "vendors": ["8086","14e4"],
-                    "devices": ["154c","16dc","1593","1889"],
-                    "drivers": ["iavf","bnxt_en"],
-                    "pfNames": ["ens7f1#0-63"]
-                }
-            },
-            {
-                "resourceName": "ext_net_1",
-                "selectors": {
-                    "vendors": ["8086","14e4"],
-                    "devices": ["154c","16dc","1593","1889"],
-                    "drivers": ["iavf","bnxt_en"],
-                    "pfNames": ["ens7f2#32-63"]
-                }
-            },
-            {
-                "resourceName": "ext_net_2",
-                "selectors": {
-                    "vendors": ["8086","14e4"],
-                    "devices": ["154c","16dc","1593","1889"],
-                    "drivers": ["iavf","bnxt_en"],
-                    "pfNames": ["ens7f3#32-63"]
-                }
-            },
-            {
-                "resourceName": "db_net_1",
-                "selectors": {
-                    "vendors": ["8086","14e4"],
-                    "devices": ["1593","16dc","1889"],
-                    "drivers": ["iavf","bnxt_en"],
-                    "pfNames": ["ens7f3#0-31"]
-                }
-            },
-            {
-                "resourceName": "db_net_2",
-                "selectors": { 
-                    "vendors": ["8086","14e4"],
-                    "devices": ["154c","16dc","1593","1889"],
-                    "drivers": ["iavf","bnxt_en"],
-                    "pfNames": ["ens7f2#0-31"]
-                }
-            }
-        ]
+      "resourceList": [
+{% for resource in sriov_pf_mappings %}
+        {
+          "resourceName": "{{ resource.resource }}",
+          "selectors": {
+            "vendors": {{ (resource.vendors | default(sriov_selector_vendors)) | to_json }},
+            "devices": {{ (resource.devices | default(sriov_selector_devices)) | to_json }},
+            "drivers": {{ (resource.drivers | default(sriov_selector_drivers)) | to_json }},
+            "pfNames": {{ resource.pf_names | to_json }}
+          }
+        }{% if not loop.last %},{% endif %}
+{% endfor %}
+      ]
     }

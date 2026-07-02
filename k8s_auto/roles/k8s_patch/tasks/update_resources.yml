@@ -1,18 +1,18 @@
 ---
-- name: Update config manifests kubernetes
+- name: Read static pod manifest before patching
   tags: patch
   slurp:
     src: "/etc/kubernetes/manifests/{{ item.name }}.yaml"
   register: raw_cfg
 
-- name: Update config 
+- name: Merge static pod resource limits and extra arguments
   tags: patch
   vars:
     current: "{{ raw_cfg.content | b64decode | from_yaml }}"
   set_fact:
-    updated_cfg: "{{ current | combine({'spec': {'containers': [current.spec.containers[0] | combine({'resources': item.resources, 'command': current.spec.containers[0].command + item.args })]}}, recursive=true) }}"
+    updated_cfg: "{{ current | combine({'spec': {'containers': [current.spec.containers[0] | combine({'resources': item.resources, 'command': (current.spec.containers[0].command + item.args) | unique | list })]}}, recursive=true) }}"
 
-- name: Write config
+- name: Write patched static pod manifest
   tags: patch
   copy:
     content: "{{ updated_cfg | to_nice_yaml }}"

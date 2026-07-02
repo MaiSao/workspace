@@ -1,0 +1,119 @@
+---
+- name: Set Elasticsearch render directory
+  set_fact:
+    __elasticsearch_render_dir: "{{ __bootstrap_dir | default('/root/kubebootstrap') }}/elasticsearch"
+    __extra_service_order: "{{ k8s_enabled_extra_services | map(attribute='name') | list }}"
+    __enabled_extra_service_names: []
+
+- name: Collect enabled extra services
+  loop: "{{ k8s_enabled_extra_services }}"
+  set_fact:
+    __enabled_extra_service_names: "{{ __enabled_extra_service_names + [item.name] }}"
+  when: item.enabled | default(true) | bool
+
+- name: Verify Local Path Provisioner dependency for Elasticsearch
+  assert:
+    that:
+      - "'local_path_provisioner' in __extra_service_order"
+      - "'elasticsearch' in __extra_service_order"
+      - "__extra_service_order.index('local_path_provisioner') < __extra_service_order.index('elasticsearch')"
+      - "'local_path_provisioner' in __enabled_extra_service_names"
+    fail_msg: Elasticsearch uses Rancher Local Path Provisioner for PVCs. Enable local_path_provisioner and keep it before elasticsearch in k8s_enabled_extra_services.
+
+- name: Wait for Local Path Provisioner rollout before Elasticsearch
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ local_path_namespace }} rollout status deployment/local-path-provisioner --timeout=180s
+  args:
+    executable: /bin/bash
+
+- name: Create Elasticsearch render directory
+  file:
+    path: "{{ __elasticsearch_render_dir }}"
+    state: directory
+    recurse: true
+
+- name: Render Elasticsearch manifests
+  loop:
+    - namespace.yaml.j2
+    - secrets.yaml.j2
+    - secret-elastic-certs.yaml.j2
+    - elasticsearch-configs.yaml.j2
+    - elasticsearch-log4j2.yaml.j2
+    - jvm-config.yaml.j2
+    - storageclasses.yaml.j2
+    - elasticsearch-services.yaml.j2
+    - elasticsearch-statefulsets.yaml.j2
+    - elasticsearch-post-install-job.yaml.j2
+    - kibana.yaml.j2
+    - elasticsearch-exporter.yaml.j2
+  template:
+    src: "{{ item }}"
+    dest: "{{ __elasticsearch_render_dir }}/{{ item | replace('.j2', '') }}"
+
+- name: Apply Elasticsearch core manifests
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __elasticsearch_render_dir }}/namespace.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/secrets.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/secret-elastic-certs.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-configs.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-log4j2.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/jvm-config.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/storageclasses.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-services.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-statefulsets.yaml
+  args:
+    executable: /bin/bash
+
+- name: Wait for Elasticsearch StatefulSet rollouts
+  loop: "{{ elasticsearch_node_sets | dict2items }}"
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} rollout status statefulset/elasticsearch-{{ item.key }} --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
+  args:
+    executable: /bin/bash
+  when: item.value.replicas | int > 0
+
+- name: Run Elasticsearch post-install security setup
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} delete job elasticsearch-post-install --ignore-not-found
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-post-install-job.yaml
+    if ! kubectl -n {{ elasticsearch_namespace }} wait --for=condition=complete job/elasticsearch-post-install --timeout={{ elasticsearch_post_install_job_timeout | default('300s') }}; then
+      kubectl -n {{ elasticsearch_namespace }} logs job/elasticsearch-post-install || true
+      kubectl -n {{ elasticsearch_namespace }} describe job elasticsearch-post-install || true
+      exit 1
+    fi
+    kubectl -n {{ elasticsearch_namespace }} logs job/elasticsearch-post-install || true
+  args:
+    executable: /bin/bash
+  when: elasticsearch_kibana.enabled | default(true) | bool
+
+- name: Apply Elasticsearch dependent applications
+  shell: |
+    set -Eeuo pipefail
+    {% if elasticsearch_kibana.enabled | default(true) | bool %}
+    kubectl apply -f {{ __elasticsearch_render_dir }}/kibana.yaml
+    {% endif %}
+    {% if elasticsearch_exporter.enabled | default(true) | bool %}
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-exporter.yaml
+    {% endif %}
+  args:
+    executable: /bin/bash
+
+- name: Wait for Kibana rollout
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} rollout status deployment/kibana --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
+  args:
+    executable: /bin/bash
+  when: elasticsearch_kibana.enabled | default(true) | bool
+
+- name: Wait for Elasticsearch exporter rollout
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} rollout status deployment/elasticsearch-exporter --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
+  args:
+    executable: /bin/bash
+  when: elasticsearch_exporter.enabled | default(true) | bool

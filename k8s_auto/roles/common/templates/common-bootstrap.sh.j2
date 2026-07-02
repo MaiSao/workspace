@@ -1,4 +1,6 @@
 #!/bin/env bash
+set -Eeuo pipefail
+trap 'echo "[ERROR] common-bootstrap.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 (command -v kubeadm  && kubeadm reset -f) || echo "Host seems to be fresh. Skipping kubeadm reset..."
 

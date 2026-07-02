@@ -1,0 +1,57 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: elasticsearch-post-install
+  namespace: {{ elasticsearch_namespace }}
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: {{ elasticsearch_post_install_job_ttl_seconds | default(300) }}
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-post-install
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: setup-kibana-system-user
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ elasticsearch_setup_image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ELASTIC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: es-basic-auth
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-basic-auth
+            - name: KIBANA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: es-kibana-auth
+            - name: KIBANA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-kibana-auth
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              i=0
+              until curl -kfsS -u "${ELASTIC_USERNAME}:${ELASTIC_PASSWORD}" https://elasticsearch-master:9200 >/dev/null; do
+                i=$((i + 1))
+                if [ "$i" -ge 60 ]; then
+                  echo "Elasticsearch API did not become ready before timeout" >&2
+                  exit 1
+                fi
+                sleep 10
+              done
+              curl -kfsS -u "${ELASTIC_USERNAME}:${ELASTIC_PASSWORD}" \
+                -X POST "https://elasticsearch-master:9200/_security/user/${KIBANA_USERNAME}/_password" \
+                -H "Content-Type: application/json" \
+                -d "{\"password\":\"${KIBANA_PASSWORD}\"}"

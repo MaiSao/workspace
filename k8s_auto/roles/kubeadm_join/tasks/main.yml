@@ -1,7 +1,10 @@
 ---
-- name: join nodes to cluster
+- name: Join remaining control-plane and worker nodes to cluster
   shell: |
+    set -Eeuo pipefail
     cat > /root/join-cluster.sh <<'EOF'
+    set -Eeuo pipefail
+    trap 'echo "[ERROR] join-cluster.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
     if [[ -f /etc/kube-master-metadata ]]; then
       {{ hostvars[groups['master'][0]].control_join }} --apiserver-advertise-address {{ k8s_ip }}
     else
@@ -9,6 +12,8 @@
     fi
     EOF
     bash /root/join-cluster.sh | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+  args:
+    executable: /bin/bash
   when:
     - "'kubeadm_join' in k8s_install_services"
     - inventory_hostname != groups['master'][0]

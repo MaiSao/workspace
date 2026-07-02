@@ -1,12 +1,12 @@
 ---
-- name: generate containerd config file
+- name: Render containerd CRI configuration
   tags: ["dryrun"]
   template:
     src: config.toml.j2
     dest: /etc/containerd/config.toml
   when: "'containerd' in k8s_install_services"
 
-- name: generate containerd bootstrap script
+- name: Render containerd installation bootstrap script
   tags: ["dryrun"]
   template:
     src: containerd-bootstrap.sh.j2
@@ -14,6 +14,10 @@
     mode: '0755'
   when: "'containerd' in k8s_install_services"
 
-- name: execute containerd bootstrap script
-  shell: bash /root/kube-containerd-bootstrap.sh | tee {{ __bootstrap_dir }}/logs/containerd-bootstrap.{{ __session_time }}.log
+- name: Run containerd installation bootstrap script
+  shell: |
+    set -Eeuo pipefail
+    bash /root/kube-containerd-bootstrap.sh | tee {{ __bootstrap_dir }}/logs/containerd-bootstrap.{{ __session_time }}.log
+  args:
+    executable: /bin/bash
   when: "'containerd' in k8s_install_services"

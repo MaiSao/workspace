@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ fluentbit_name }}
+  namespace: {{ fluentbit_namespace }}
+  labels:
+    k8s-app: fluent-bit-logging
+    version: v1
+    kubernetes.io/cluster-service: "true"
+spec:
+  selector:
+    matchLabels:
+      k8s-app: fluent-bit-logging
+  template:
+    metadata:
+      labels:
+        k8s-app: fluent-bit-logging
+        version: v1
+        kubernetes.io/cluster-service: "true"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "2020"
+        prometheus.io/path: /api/v1/metrics/prometheus
+    spec:
+      serviceAccountName: {{ fluentbit_name }}
+      containers:
+        - name: {{ fluentbit_name }}
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ fluentbit_image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "SYS_TIME"]
+            readOnlyRootFilesystem: true
+          ports:
+            - containerPort: 2020
+          env:
+            - name: FLUENT_ELASTICSEARCH_HOST
+              value: "{{ fluentbit_elasticsearch_host }}"
+            - name: FLUENT_ELASTICSEARCH_PORT
+              value: "{{ fluentbit_elasticsearch_port }}"
+            - name: FLUENT_ELASTICSEARCH_USER
+              value: "{{ fluentbit_elasticsearch_user }}"
+            - name: FLUENT_ELASTICSEARCH_PASSWORD
+              value: "{{ fluentbit_elasticsearch_password }}"
+            - name: FLB_CLUSTER
+              value: "{{ fluentbit_cluster_name }}"
+            - name: FLB_HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: FLB_HOST_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+{{ k8s_resources.fluentbit | to_nice_yaml(indent=2) | indent(12, true) }}
+          volumeMounts:
+            - name: etcmachineid
+              mountPath: /etc/machine-id
+              readOnly: true
+            - name: journallog
+              mountPath: /run/log/journal
+              readOnly: true
+            - name: varlogcontainers
+              mountPath: /var/log
+              readOnly: true
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/
+            - name: pod-log-storage
+              mountPath: /u01/mano-data
+              readOnly: true
+            - name: flb-storage
+              mountPath: /data/flb-storage
+            - name: flb-db
+              mountPath: /data/db
+            - name: mongodb
+              mountPath: /u01/mongodb
+            - name: manolog
+              mountPath: /u02/VNF
+            - name: k8sdata
+              mountPath: /u01/k8saudit
+            - name: mdalog
+              mountPath: /u01/mda
+      terminationGracePeriodSeconds: 10
+      volumes:
+        - name: etcmachineid
+          hostPath:
+            path: /etc/machine-id
+            type: File
+        - name: journallog
+          hostPath:
+            path: {{ fluentbit_host_paths.journal }}
+        - name: varlogcontainers
+          hostPath:
+            path: {{ fluentbit_host_paths.var_log }}
+        - name: fluent-bit-config
+          configMap:
+            name: {{ fluentbit_config_name }}
+        - name: pod-log-storage
+          hostPath:
+            path: {{ fluentbit_host_paths.mano_data }}
+        - name: manolog
+          hostPath:
+            path: {{ fluentbit_host_paths.vnf_data }}
+        - name: flb-storage
+          hostPath:
+            path: {{ fluentbit_host_paths.storage }}
+        - name: flb-db
+          hostPath:
+            path: {{ fluentbit_host_paths.db }}
+        - name: k8sdata
+          hostPath:
+            path: {{ fluentbit_host_paths.k8s_audit }}
+        - name: mongodb
+          hostPath:
+            path: {{ fluentbit_host_paths.mongodb }}
+        - name: mdalog
+          hostPath:
+            path: {{ fluentbit_host_paths.mda_data }}
+      tolerations:
+        - operator: "Exists"

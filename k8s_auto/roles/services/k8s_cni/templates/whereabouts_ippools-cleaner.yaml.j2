@@ -147,12 +147,7 @@ spec:
             - name: DRY_RUN
               value: "false"   # set "false" để thực thi xóa
             resources:
-              requests:
-                cpu: "100m"
-                memory: "50Mi"
-              limits:
-                cpu: "4"
-                memory: "500Mi"
+{{ k8s_resources.whereabouts_cleaner | to_nice_yaml(indent=2) | indent(14, true) }}
             volumeMounts:
             - name: script
               mountPath: /script

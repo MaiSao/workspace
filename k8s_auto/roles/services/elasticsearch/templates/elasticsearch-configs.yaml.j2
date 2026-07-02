@@ -1,0 +1,40 @@
+{% for node_set_name, node_set in elasticsearch_node_sets.items() %}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elasticsearch-{{ node_set_name }}-config
+  namespace: {{ elasticsearch_namespace }}
+data:
+  elasticsearch.yml: |
+    cluster.name: {{ elasticsearch_cluster_name }}
+    network.host: ["_{{ elasticsearch_network_interface }}_"]
+    http.host: "_{{ elasticsearch_network_interface }}_"
+    http.publish_host: "_{{ elasticsearch_network_interface }}_"
+    transport.host: "_{{ elasticsearch_network_interface }}_"
+    transport.publish_host: "_{{ elasticsearch_network_interface }}_"
+    http.port: 9200
+    transport.port: 9300
+
+    xpack.security.enabled: true
+    xpack.security.transport.ssl.enabled: true
+    xpack.security.transport.ssl.verification_mode: certificate
+    xpack.security.transport.ssl.key: certs/tls.key
+    xpack.security.transport.ssl.certificate: certs/tls.crt
+    xpack.security.transport.ssl.certificate_authorities: [ "certs/ca.crt" ]
+    xpack.security.http.ssl.enabled: true
+    xpack.security.http.ssl.key: certs/tls.key
+    xpack.security.http.ssl.certificate: certs/tls.crt
+    xpack.security.http.ssl.certificate_authorities: [ "certs/ca.crt" ]
+    path.logs: /usr/share/elasticsearch/logs
+    node.name: ${NODE_NAME}
+    node.roles: ${NODE_ROLES}
+
+{% if node_set.config_extra is defined and node_set.config_extra | length > 0 %}
+{{ node_set.config_extra | indent(4, true) }}
+{% endif %}
+    discovery.seed_hosts: {{ elasticsearch_seed_hosts | to_json }}
+    cluster.initial_master_nodes: {{ elasticsearch_initial_master_nodes | to_json }}
+{% if not loop.last %}
+---
+{% endif %}
+{% endfor %}

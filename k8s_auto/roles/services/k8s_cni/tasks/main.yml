@@ -1,5 +1,5 @@
 ---
-- name: build CNI manifest file list
+- name: Build CNI manifest list from selected network options
   set_fact:
     __cni_manifest_files: >-
       {{
@@ -8,13 +8,14 @@
         else calico_init )
         + coredns_init
         + (multus_init if multi_network | bool else [])
+        + (macvlan_init if (multi_network | bool and multus_macvlan | bool) else [] )
         + (sriov_init if multus_sriov | bool else [] )
       }}
   when:
     - inventory_hostname == groups['master'][0]
     - "'cni' in k8s_install_services"
 
-- name: generate CNI manifests
+- name: Render selected CNI manifests on bootstrap master
   loop: "{{ __cni_manifest_files }}"
   template:
     src: "{{ item }}"
@@ -23,9 +24,12 @@
     - inventory_hostname == groups['master'][0]
     - "'cni' in k8s_install_services"
 
-- name: install CNI
+- name: Apply selected CNI manifests to cluster
   shell: |
+    set -Eeuo pipefail
     cat > /root/install-cni.sh <<'EOF'
+    set -Eeuo pipefail
+    trap 'echo "[ERROR] install-cni.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
     {% if cni_prime == 'calico' or cni_prime is not defined %}
     kubectl apply -f {{ __bootstrap_dir }}/calico-v3.28.2.yaml
     kubectl set env daemonset/calico-node -n kube-system \
@@ -42,16 +46,21 @@
     kubectl apply -f {{ __bootstrap_dir }}/whereabouts_ippools.yaml \
                   -f {{ __bootstrap_dir }}/whereabouts_ippools-cleaner.yaml \
                   -f {{ __bootstrap_dir }}/whereabouts_daemonset_install.yaml
-    {% if multus_sriov is defined %}
+    {% if multus_macvlan | bool %}
+    kubectl apply -f {{ __bootstrap_dir }}/whereabouts-nad-macvlan.yaml
+    {% endif %}
+    {% if multus_sriov | bool %}
     kubectl apply -f {{ __bootstrap_dir }}/sriov_configMap.yaml \
                   -f {{ __bootstrap_dir }}/whereabouts_daemonset_install.yaml \
-                  -f {{ __bootstrap_dir }}/whereabouts-net-sriov-bond.yaml
+                  -f {{ __bootstrap_dir }}/whereabouts-nad-sriov-bond.yaml
     {% endif %}
     {% endif %}
     kubectl apply -f {{ __bootstrap_dir }}/coredns.yaml
     kubectl rollout restart deployment/coredns -n kube-system
     EOF
     bash /root/install-cni.sh | tee {{ __bootstrap_dir }}/logs/install-cni.{{ __session_time }}.log
+  args:
+    executable: /bin/bash
   when:
     - inventory_hostname == groups['master'][0]
     - "'cni' in k8s_install_services"

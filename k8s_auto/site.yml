@@ -6,6 +6,7 @@
     - group_vars/all.yml
     - group_vars/images.yml
     - group_vars/services.yml
+    - group_vars/resources.yml
   roles:
     - role: common
       vars:
@@ -27,5 +28,9 @@
       tags: kubeadm_join
     - role: services/k8s_addons
       tags: addons
+    - role: services/k8s_exporters
+      tags: exporters
+    - role: k8s_resources
+      tags: k8s_resources
     - role: k8s_patch
       tags: k8s_patch

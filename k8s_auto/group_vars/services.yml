@@ -3,19 +3,18 @@
 # Dynamic install service catalog
 #---------------------------------------------------
 # Default behavior runs the full current install flow. Operators usually edit
-# only k8s_default_services or k8s_enabled_extra_services.
+# only k8s_default_services or add-on manifest lists.
 #
 # Full install:
 #   ansible-playbook -i inventory.ini site.yml
 #
 # Run only selected built-in phases:
 #   ansible-playbook -i inventory.ini site.yml \
-#     -e 'k8s_install_services=["cni","addons"]'
+#     -e 'k8s_install_services=["cni","addons","exporters","k8s_resources"]'
 #---------------------------------------------------
 
-# Built-in install phases. Keep this order unless you understand the dependency
-# chain: nodes must be prepared before containerd, HA before kubeadm init, CNI
-# before normal workloads, and patching after static pods exist.
+# Built-in install phases. This list controls which phases are enabled; site.yml
+# controls the execution order. Keep it aligned with the playbook order.
 k8s_default_services:
   - common                 # OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap config
   - containerd             # container runtime package/config/service
@@ -23,9 +22,10 @@ k8s_default_services:
   - kubeadm_prepare        # audit policy and kubeadm config rendering
   - kubeadm_control_plane  # kubeadm init and join command generation on master[0]
   - kubeconfig             # admin kubeconfig for configured master users
-  - kubeadm_join           # join non-bootstrap masters and workers
   - cni                    # Calico, CoreDNS, optional Multus/Whereabouts/SR-IOV
-  - addons                 # etcd jobs, metrics-server, kube-state-metrics
+  - kubeadm_join           # join non-bootstrap masters and workers
+  - addons                 # etcd jobs, metrics-server, kube-state-metrics, kubelet CSR approver, Kyverno
+  - k8s_resources          # kubectl resource updates for kubeadm-created workloads
   - k8s_patch              # static pod resources and arguments
 
 # Optional built-in services can be appended here later without editing the
@@ -85,7 +85,17 @@ k8s_service_catalog:
     role: services/k8s_addons
     phase: addons
     required: false
-    description: etcd jobs, metrics-server, and kube-state-metrics.
+    description: etcd jobs, metrics-server, kube-state-metrics, kubelet CSR approver, and Kyverno policies.
+  - name: exporters
+    role: services/k8s_exporters
+    phase: addons
+    required: false
+    description: Optional cert, IP pool, SNMP, and SNMP switch exporters.
+  - name: k8s_resources
+    role: k8s_resources
+    phase: patch
+    required: false
+    description: Resource requests and limits for kubeadm-created workloads such as CoreDNS and kube-proxy.
   - name: k8s_patch
     role: k8s_patch
     phase: patch
@@ -97,7 +107,7 @@ k8s_service_catalog:
 #---------------------------------------------------
 # File names must exist under the owning role's templates/ directory.
 # kubeadm_init: roles/kubeadm_prepare/templates/
-# calico_init, coredns_init, multus_init, sriov_init:
+# calico_init, coredns_init, multus_init, macvlan_init, sriov_init:
 #   roles/services/k8s_cni/templates/
 # etcd_operation, add_on_self:
 #   roles/services/k8s_addons/templates/
@@ -127,42 +137,137 @@ multus_init:
   - whereabouts_ippools-cleaner.yaml.j2
   - whereabouts_ippools.yaml.j2
 
+# Macvlan NADs rendered when multus_macvlan: true.
+macvlan_init:
+  - whereabouts-nad-macvlan.yaml.j2
+
+# Macvlan operator inputs. The template generates Whereabouts-backed
+# NetworkAttachmentDefinitions from these compact values.
+macvlan_defaults:
+  namespace: default
+  cni_version: "0.3.1"
+  type: macvlan
+  mode: bridge
+  ipam_type: whereabouts
+
+# Each macvlan network is self-contained so operators can edit one list only.
+# Required per item: name, master_interface, ip_range, gateway. Optional:
+# namespace, mode, range_start, range_end, or exclude.
+macvlan_networks:
+  - { name: ocs-cgw-data-gx, master_interface: bond2.2433, ip_range: 68.240.37.96/27, gateway: 68.240.37.126, range_start: 68.240.37.97, range_end: 68.240.37.98 }
+  - { name: ocs-cgw-data-gy, master_interface: bond2.2433, ip_range: 68.240.37.96/27, gateway: 68.240.37.126, range_start: 68.240.37.99, range_end: 68.240.37.100 }
+  - { name: ocs-cgw-data-n7, master_interface: bond2.2433, ip_range: 68.240.37.96/27, gateway: 68.240.37.126, range_start: 68.240.37.101, range_end: 68.240.37.102 }
+  - { name: ocs-cgw-data-n40, master_interface: bond2.2433, ip_range: 68.240.37.96/27, gateway: 68.240.37.126, range_start: 68.240.37.103, range_end: 68.240.37.104 }
+  - { name: ocs-authen-server, master_interface: bond2.2436, ip_range: 68.240.37.32/28, gateway: 68.240.37.46, range_start: 68.240.37.33, range_end: 68.240.37.34 }
+  - { name: ocs-cgw-pro, master_interface: bond2.2436, ip_range: 68.240.37.32/28, gateway: 68.240.37.46, range_start: 68.240.37.35, range_end: 68.240.37.36 }
+  - { name: ocs-app, master_interface: bond2.2433, ip_range: 68.240.37.96/27, gateway: 68.240.37.126, range_start: 68.240.37.105, range_end: 68.240.37.119 }
+  - { name: aerospike-app, master_interface: bond2.2433, ip_range: 68.240.37.96/27, gateway: 68.240.37.126, range_start: 68.240.37.120, range_end: 68.240.37.125 }
+  - { name: aerospike-linksite, master_interface: bond2.2438, ip_range: 68.240.37.80/28, gateway: 68.240.37.94, range_start: 68.240.37.81, range_end: 68.240.37.93 }
+
 # SR-IOV manifests rendered when multus_sriov: true.
 sriov_init:
   - sriov_configMap.yaml.j2
   - sriovdp-daemonsetv3.8.0.yaml.j2
-  - whereabouts-net-sriov-bond.yaml.j2
+  - whereabouts-nad-sriov-bond.yaml.j2
+
+# SR-IOV operator inputs. Templates generate the full device-plugin ConfigMap
+# and NetworkAttachmentDefinitions from these compact values.
+sriov_resource_prefix: intel.com
+sriov_selector_vendors: ["8086", "14e4"]
+sriov_selector_devices: ["154c", "16dc", "1593", "1889"]
+sriov_selector_drivers: ["iavf", "bnxt_en"]
+
+sriov_pf_mappings:
+  - { resource: app_net_1, nad: app-net-1, group: app, pf_names: ["ens7f0#0-63"] }
+  - { resource: app_net_2, nad: app-net-2, group: app, pf_names: ["ens7f1#0-63"] }
+  - { resource: ext_net_1, nad: ext-net-1, group: ext, pf_names: ["ens7f2#32-63"] }
+  - { resource: ext_net_2, nad: ext-net-2, group: ext, pf_names: ["ens7f3#32-63"] }
+  - { resource: db_net_1, nad: db-net-1, group: db, pf_names: ["ens7f3#0-31"], devices: ["1593", "16dc", "1889"] }
+  - { resource: db_net_2, nad: db-net-2, group: db, pf_names: ["ens7f2#0-31"] }
+
+sriov_bond_defaults:
+  mode: active-backup
+  failOverMac: 1
+  linksInContainer: true
+  miimon: "100"
+
+sriov_bond_groups:
+  app:
+    vlan: 1000
+    links: ["app-net-1", "app-net-2"]
+    range: 10.57.217.1/24
+    gateway: 10.57.217.1
+    exclude: ["10.57.217.1/26", "10.57.217.65/29", "10.57.217.73/29", "10.57.217.81/29", "10.57.217.89/29"]
+  ext:
+    vlan: 1001
+    links: ["ext-net-1", "ext-net-2"]
+    range: 10.57.218.0/24
+    gateway: 10.57.218.1
+    exclude: ["10.57.218.1/26", "10.57.218.65/29", "10.57.218.73/29", "10.57.218.81/29", "10.57.218.89/29"]
+  db:
+    vlan: 1002
+    links: ["db-net-1", "db-net-2"]
+    range: 10.57.219.0/24
+    gateway: 10.57.219.1
+    exclude: ["10.57.219.0/26", "10.57.219.65/29", "10.57.219.73/29", "10.57.219.81/29", "10.57.219.89/29"]
+
+sriov_bond_networks:
+  - { name: app-net, group: app }
+  - { name: em-app-net, group: app, range_start: 10.57.217.65, range_end: 10.57.217.67 }
+  - { name: fep-app-net, group: app, range_start: 10.57.217.73, range_end: 10.57.217.77 }
+  - { name: bep-app-net, group: app, range_start: 10.57.217.81, range_end: 10.57.217.85 }
+  - { name: media-app-net, group: app, range_start: 10.57.217.89, range_end: 10.57.217.93 }
+  - { name: ext-net, group: ext }
+  - { name: fep-ext-net, group: ext, range_start: 10.57.218.65, range_end: 10.57.218.69 }
+  - { name: media-ext-net, group: ext, range_start: 10.57.218.73, range_end: 10.57.218.77 }
+  - { name: db-net, group: db }
 
 # Additional cluster add-ons rendered by services/k8s_addons.
 add_on_self:
   - kube-state-metrics.yaml.j2
   - metric-server-v0.8.0.yaml.j2
+  - kubelet-csr-approver.yaml.j2
+  - kyverno-v1.14.4.yaml.j2
+  - kyverno-block-specific-nodeports.yaml.j2
+  - kyverno-require-run-as-nonroot.yaml.j2
+  - kyverno-pod-resources-request-limit-block.yaml.j2
 
 #---------------------------------------------------
-# Control-plane static pod resource sizing
+# Exporter service switches
 #---------------------------------------------------
-# These values are used by roles/k8s_patch to update static pod manifests under:
-# /etc/kubernetes/manifests/
-#---------------------------------------------------
-etcd_requests_cpu: "100m"
-etcd_requests_memory: "128Mi"
-etcd_limits_cpu: "2"
-etcd_limits_memory: "4Gi"
+# The exporters role runs only when "exporters" is in k8s_install_services.
+# cert and snmp_switch are scheduled on master/control-plane nodes. ip_pools is
+# also gated by multus_sriov: true because it reports SR-IOV IP pool state.
+k8s_exporters:
+  cert:
+    enabled: true
+  ip_pools:
+    enabled: false
+  snmp:
+    enabled: true
+  snmp_switch:
+    enabled: true
+  haproxy:
+    enabled: true
+    package_name: haproxy_exporter
+    binary_path: /usr/local/bin/haproxy_exporter
+    listen_address: ":9101"
+    scrape_uri: unix:/var/lib/haproxy/stats
+    extra_args: ""
+  keepalived:
+    enabled: true
+    package_name: keepalived_exporter
+    binary_path: /usr/local/bin/keepalived_exporter
+    listen_address: ":9165"
+    extra_args: ""
 
-apiserver_requests_cpu: "100m"
-apiserver_requests_memory: "128Mi"
-apiserver_limits_cpu: "2"
-apiserver_limits_memory: "4Gi"
-
-controller_manager_requests_cpu: "100m"
-controller_manager_requests_memory: "128Mi"
-controller_manager_limits_cpu: "2"
-controller_manager_limits_memory: "4Gi"
-
-scheduler_requests_cpu: "100m"
-scheduler_requests_memory: "128Mi"
-scheduler_limits_cpu: "2"
-scheduler_limits_memory: "4Gi"
+exporter_images: >-
+  {{
+    ([] if not (k8s_exporters.cert.enabled | default(false) | bool) else [cert_exporter_image])
+    + ([] if not ((k8s_exporters.ip_pools.enabled | default(false) | bool) and (multus_sriov | default(false) | bool)) else [ip_pools_exporter_image])
+    + ([] if not (k8s_exporters.snmp.enabled | default(false) | bool) else [snmp_exporter_image])
+    + ([] if not (k8s_exporters.snmp_switch.enabled | default(false) | bool) else [snmp_switch_exporter_image])
+  }}
 
 #---------------------------------------------------
 # Future extra service roles
@@ -173,7 +278,192 @@ scheduler_limits_memory: "4Gi"
 #
 # Run extra services:
 #   ansible-playbook -i inventory.ini extra-services.yml
+# Elasticsearch volumes use Rancher Local Path Provisioner. Keep
+# local_path_provisioner enabled and listed before elasticsearch.
 k8s_enabled_extra_services:
-  - name: kubelet_csr_approver
-    role: services/kubelet_csr_approver
+  - name: fluentbit
+    role: services/fluentbit
     enabled: true
+  - name: local_path_provisioner
+    role: services/local_path_provisioner
+    enabled: true
+  - name: elasticsearch
+    role: services/elasticsearch
+    enabled: true
+    depends_on:
+      - local_path_provisioner
+
+#---------------------------------------------------
+# Elasticsearch extra service
+#---------------------------------------------------
+# Elasticsearch is installed by extra-services.yml. Values below preserve the
+# reference deployment under k8s_extends/elasticsearchv8.19 while splitting
+# elasticsearch.yml by node type for easier maintenance. Its StorageClasses use
+# local_path_provisioner_name, so the Local Path Provisioner extra service must
+# run before this role.
+elasticsearch_namespace: elk
+elasticsearch_cluster_name: es-hcm
+elasticsearch_network_interface: bond2.1005
+elasticsearch_seed_hosts: ["192.168.5.86", "192.168.5.3", "192.168.5.4"]
+elasticsearch_initial_master_nodes: ["bchcmcom02", "bchcmcom03", "bchcmcom04"]
+elasticsearch_environment_label: production
+elasticsearch_host_network: true
+
+elasticsearch_basic_auth:
+  username: elastic
+  password: "123456a@"
+
+elasticsearch_kibana_auth:
+  username: kibana_system
+  password: "123456a@"
+
+elasticsearch_storage_classes:
+  data:
+    name: elasticsearch-data
+    node_path: /u01/elasticsearch/data
+    reclaim_policy: Retain
+    volume_binding_mode: WaitForFirstConsumer
+    allow_volume_expansion: true
+  log:
+    name: elasticsearch-log
+    node_path: /u01/elasticsearch/log
+    reclaim_policy: Retain
+    volume_binding_mode: WaitForFirstConsumer
+    allow_volume_expansion: true
+
+elasticsearch_client_service:
+  http_node_port: 8200
+  transport_node_port: 43000
+
+elasticsearch_kibana:
+  enabled: true
+  replicas: 2
+  node_selector_role: master
+  node_port: 8601
+  base_path: /kibana
+  security_encryption_key: xpack_security_encryption_key__1234
+  saved_objects_encryption_key: saved_objects_encryption_key_5678
+  reporting_encryption_key: reporting_encryption_key_987654321
+  resources:
+    requests: { cpu: "100m", memory: "100Mi" }
+    limits: { cpu: "2", memory: "4Gi" }
+
+elasticsearch_exporter:
+  enabled: true
+  replicas: 2
+  node_selector_role: master
+  node_port: 9114
+  resources:
+    requests: { cpu: "100m", memory: "100Mi" }
+    limits: { cpu: "2", memory: "4Gi" }
+
+elasticsearch_node_sets:
+  master:
+    replicas: 3
+    roles: master
+    node_selector_role: master
+    java_opts: "-Xms8g -Xmx8g"
+    resources:
+      requests: { cpu: "1", memory: "4Gi" }
+      limits: { cpu: "4", memory: "12Gi" }
+    data_storage: 128Gi
+    log_storage: 128Gi
+    config_extra: |
+      thread_pool.write.size: 2
+      thread_pool.write.queue_size: 1000
+      thread_pool.search.size: 2
+      thread_pool.search.queue_size: 1000
+      indices.memory.index_buffer_size: 15%
+  data:
+    replicas: 3
+    roles: data,ingest
+    node_selector_role: data
+    java_opts: "-Xms12g -Xmx12g"
+    resources:
+      requests: { cpu: "2", memory: "4Gi" }
+      limits: { cpu: "8", memory: "16Gi" }
+    data_storage: 512Gi
+    log_storage: 512Gi
+    config_extra: |
+      thread_pool.write.size: 8
+      thread_pool.write.queue_size: 8000
+      thread_pool.search.size: 4
+      thread_pool.search.queue_size: 2000
+      indices.memory.index_buffer_size: 35%
+      indices.recovery.max_bytes_per_sec: 2gb
+      indices.recovery.max_concurrent_operations: 2
+      cluster.routing.allocation.node_concurrent_recoveries: 2
+      cluster.routing.allocation.node_initial_primaries_recoveries: 2
+      cluster.routing.allocation.cluster_concurrent_rebalance: 2
+      indices.recovery.recovery_activity_timeout: 30m
+      indices.recovery.internal_action_timeout: 2m
+      indices.recovery.max_concurrent_file_chunks: 2
+      cluster.routing.allocation.enable: all
+      cluster.routing.allocation.balance.shard: 0.45
+      cluster.routing.allocation.balance.index: 0.55
+      cluster.routing.allocation.allow_rebalance: always
+  client:
+    replicas: 3
+    roles: ingest,remote_cluster_client
+    node_selector_role: client
+    java_opts: "-Xms4g -Xmx4g"
+    resources:
+      requests: { cpu: "500m", memory: "2Gi" }
+      limits: { cpu: "4", memory: "8Gi" }
+    data_storage: 64Gi
+    log_storage: 64Gi
+    config_extra: |
+      thread_pool.write.size: 4
+      thread_pool.write.queue_size: 4000
+      thread_pool.search.size: 4
+      thread_pool.search.queue_size: 2000
+      indices.memory.index_buffer_size: 20%
+
+#---------------------------------------------------
+# Local Path Provisioner extra service
+#---------------------------------------------------
+# Rancher Local Path Provisioner is installed by extra-services.yml. The
+# template follows upstream v0.0.36 and exposes only the deployment knobs below.
+local_path_namespace: local-path-storage
+local_path_storage_class_name: local-path
+local_path_provisioner_name: rancher.io/local-path
+local_path_default_path: /opt/local-path-provisioner
+local_path_reclaim_policy: Delete
+local_path_volume_binding_mode: WaitForFirstConsumer
+local_path_make_default_storage_class: false
+
+#---------------------------------------------------
+# Fluent Bit extra service
+#---------------------------------------------------
+# Fluent Bit is installed by extra-services.yml. Its native .conf files live in
+# roles/services/fluentbit/templates/conf/ and are lightly templated with these
+# deployment values and profile switches.
+fluentbit_namespace: fluentbit
+fluentbit_name: fluent-bit-ocs
+fluentbit_config_name: fluent-bit-ocs-config
+fluentbit_service_name: fluent-bit-service
+fluentbit_cluster_name: hlamano
+fluentbit_elasticsearch_host: elasticsearch-master.elk.svc
+fluentbit_elasticsearch_port: "9200"
+fluentbit_elasticsearch_user: elastic
+fluentbit_elasticsearch_password: "123456a@"
+
+fluentbit_profiles:
+  audit: true
+  systemd: true
+  kube_containers: true
+  mano: true
+  ocs: true
+  mda: true
+  mysql: true
+
+fluentbit_host_paths:
+  journal: /run/log/journal
+  var_log: /var/log
+  mano_data: /u01/mano-data
+  vnf_data: /u02/VNF
+  k8s_audit: /u01/k8saudit
+  mongodb: /u01/mongodb
+  mda_data: /u01/mda
+  storage: /u01/flb-storage
+  db: /u01/flb-db

@@ -1,0 +1,16 @@
+[Unit]
+Description=Prometheus Keepalived Exporter
+After=network-online.target keepalived.service
+Wants=network-online.target
+Requires=keepalived.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart={{ k8s_exporters.keepalived.binary_path }} --web.listen-address={{ k8s_exporters.keepalived.listen_address }} {{ k8s_exporters.keepalived.extra_args | default('') }}
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

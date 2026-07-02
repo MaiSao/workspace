@@ -1,0 +1,4 @@
+---
+elasticsearch_rollout_timeout: 900s
+elasticsearch_post_install_job_ttl_seconds: 300
+elasticsearch_post_install_job_timeout: 300s

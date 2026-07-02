@@ -39,12 +39,7 @@ spec:
             imagePullPolicy: IfNotPresent
             name: etcd-defrag
             resources:
-              limits:
-                cpu: 250m
-                memory: 250Mi
-              requests:
-                cpu: 25m
-                memory: 25Mi
+{{ k8s_resources.etcd_defrag | to_nice_yaml(indent=2) | indent(14, true) }}
             terminationMessagePath: /dev/termination-log
             terminationMessagePolicy: File
             volumeMounts:

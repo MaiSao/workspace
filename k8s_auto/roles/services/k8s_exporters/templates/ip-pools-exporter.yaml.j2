@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: ip-pool-exporter
+  name: ip-pool-exporter
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ip-pool-exporter
+  template:
+    metadata:
+      labels:
+        app: ip-pool-exporter
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: ip-pool-exporter
+          image: {{ __registry_prefix }}/{{ ip_pools_exporter_image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - java -jar -Dserver.port=9998 -Droot.log.level=INFO prometheus-custom-exporter-1.0.3.jar
+          ports:
+            - containerPort: 9998
+              protocol: TCP
+          resources:
+{{ k8s_resources.ip_pools_exporter | to_nice_yaml(indent=2) | indent(12, true) }}
+          workingDir: /u01/app/lib
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 2000
+      serviceAccountName: prometheus-workload-reader
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ip-pool-exporter
+  namespace: kube-system
+spec:
+  ports:
+    - nodePort: 9998
+      port: 9998
+      protocol: TCP
+      targetPort: 9998
+  selector:
+    app: ip-pool-exporter
+  type: NodePort

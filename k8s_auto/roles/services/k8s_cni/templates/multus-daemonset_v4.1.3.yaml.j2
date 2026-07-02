@@ -186,12 +186,7 @@ spec:
         - "--multus-autoconfig-dir=/host/etc/cni/net.d"
         - "--cni-conf-dir=/host/etc/cni/net.d"
         resources:
-          requests:
-            cpu: "100m"
-            memory: "100Mi"
-          limits:
-            cpu: "100m"
-            memory: "200Mi"
+{{ k8s_resources.multus | to_nice_yaml(indent=2) | indent(10, true) }}
         securityContext:
           privileged: true
         terminationMessagePolicy: FallbackToLogsOnError
@@ -210,9 +205,7 @@ spec:
             - "--type"
             - "thin"
           resources:
-            requests:
-              cpu: "10m"
-              memory: "15Mi"
+{{ k8s_resources.multus_install | to_nice_yaml(indent=2) | indent(12, true) }}
           securityContext:
             privileged: true
           terminationMessagePolicy: FallbackToLogsOnError

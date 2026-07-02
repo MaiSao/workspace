@@ -115,6 +115,9 @@ cni_prime: calico
 # Install Multus and Whereabouts in addition to the primary CNI.
 multi_network: true
 
+# Install macvlan NetworkAttachmentDefinitions. Requires multi_network: true.
+multus_macvlan: false
+
 # Install SR-IOV-related manifests. Requires multi_network: true and node NIC
 # preparation outside this file.
 multus_sriov: false
@@ -145,7 +148,7 @@ keepalived_vrrp_router_id: 151
 registry_protocol: http
 registry_ip: 172.20.3.71
 registry_name: docker-registry
-registry_port: 8017
+registry_port: 4000
 imageRepositoryProject: registry.k8s.io
 
 #---------------------------------------------------

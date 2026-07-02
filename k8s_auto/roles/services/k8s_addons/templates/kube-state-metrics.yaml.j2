@@ -30,12 +30,7 @@ spec:
           timeoutSeconds: 5
         name: kube-state-metrics
         resources:
-          limits:
-            cpu: 500m
-            memory: 500Mi
-          requests:
-            cpu: 25m
-            memory: 250Mi        
+{{ k8s_resources.kube_state_metrics | to_nice_yaml(indent=2) | indent(10, true) }}
         ports:
         - containerPort: 8080
           name: http-metrics
@@ -57,8 +52,6 @@ spec:
           runAsUser: 65534
           seccompProfile:
             type: RuntimeDefault
-      nodeSelector:
-        zone: master
       serviceAccountName: kube-state-metrics
 
 ---

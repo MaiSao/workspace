@@ -22,6 +22,24 @@ etcd_image: registry.k8s.io/etcd:3.5.15-0
 metrics_server_image: registry.k8s.io/metrics-server:v0.8.0
 kube_state_metrics_image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
 kubelet_csr_approver_image: registry.k8s.io/kubelet-csr-approver:v1.2.11
+kyverno_pre_image: mano/kyvernopre:v1.14.4
+kyverno_image: mano/kyverno:v1.14.4
+kyverno_background_controller_image: mano/background-controller:v1.14.4
+kyverno_cleanup_controller_image: mano/cleanup-controller:v1.14.4
+kyverno_reports_controller_image: mano/reports-controller:v1.14.4
+cert_exporter_image: vht/cert-exporter:v2.8.0
+ip_pools_exporter_image: ip-pool-exporter:1.0.3
+snmp_exporter_image: prom/snmp-exporter:v0.15.0-vht
+snmp_switch_exporter_image: vht/mano/snmp-switch-exporter:v0.15.0
+fluentbit_image: vht/fluent-bit:4.2.2
+local_path_provisioner_image: rancher/local-path-provisioner:v0.0.36
+local_path_helper_image: library/busybox:latest
+elasticsearch_image: vht/elasticsearch:8.19.9
+elasticsearch_sysctl_image: busybox:1.36
+elasticsearch_busybox_image: mano/busybox:1.37.0
+elasticsearch_setup_image: curlimages/curl:8.11.1
+kibana_image: vht/elastic/kibana:8.19.9
+elasticsearch_exporter_image: elk/elasticsearch-exporter:v1.3.0
 coredns_image: registry.k8s.io/coredns:v1.11.3
 kube_apiserver_image: "registry.k8s.io/kube-apiserver:{{ k8s_version }}"
 kube_controller_manager_image: "registry.k8s.io/kube-controller-manager:{{ k8s_version }}"
@@ -57,6 +75,12 @@ operation_images:
   - "{{ etcd_backup_image }}"
   - "{{ metrics_server_image }}"
   - "{{ kube_state_metrics_image }}"
+  - "{{ kubelet_csr_approver_image }}"
+  - "{{ kyverno_pre_image }}"
+  - "{{ kyverno_image }}"
+  - "{{ kyverno_background_controller_image }}"
+  - "{{ kyverno_cleanup_controller_image }}"
+  - "{{ kyverno_reports_controller_image }}"
 
 # Core Kubernetes images. k8s_version comes from group_vars/all.yml.
 core_images:

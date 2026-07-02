@@ -1,0 +1,68 @@
+{% raw %}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-specific-nodeports
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: deny-specific-nodeports
+      match:
+        resources:
+          kinds:
+            - Service
+          operations:
+            - CREATE
+            - UPDATE              
+      validate:
+        message: "The NodePort are forbidden."
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.spec.type || 'ClusterIP' }}"
+                operator: Equals
+                value: NodePort
+              - key: "{{ request.object.spec.ports[].nodePort }}"
+                operator: AnyIn
+                value:
+                  - 10248
+                  - 10249
+                  - 10250
+                  - 10255
+                  - 10256
+                  - 10257
+                  - 10259
+                  - 179
+                  - 20100
+                  - 2379
+                  - 2380
+                  - 6443
+                  - 6444
+                  - 8016
+                  - 8017
+                  - 8018
+                  - 8090
+                  - 8181
+                  - 8196
+                  - 8430
+                  - 8443
+                  - 8822
+                  - 8888
+                  - 8889
+                  - 8995
+                  - 8996
+                  - 9091
+                  - 9116
+                  - 9165
+                  - 9191
+                  - 9201
+                  - 9216
+                  - 9323
+                  - 9500
+                  - 9686
+                  - 9982
+                  - 9988
+                  - 9990
+
+{% endraw %}

@@ -1,16 +1,22 @@
 ---
-- name: check if images are pullable
+- name: Pull required Kubernetes images before kubeadm init
   loop: "{{ container_images }}"
   shell: |
+    set -Eeuo pipefail
     crictl pull {{ __registry_prefix }}/{{ item }}
+  args:
+    executable: /bin/bash
   when:
     - inventory_hostname == groups['master'][0]
     - "'kubeadm_control_plane' in k8s_install_services"
 
-- name: init cluster
+- name: Initialize first Kubernetes control-plane node
   register: __init_cluster
   shell: |
+    set -Eeuo pipefail
     cat > /root/init-k8s.sh <<'EOF'
+    set -Eeuo pipefail
+    trap 'echo "[ERROR] init-k8s.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
     KUBEADMF=/root/kubeadm.yaml
     kubeadm config migrate --old-config {{ __bootstrap_dir }}/kubeadm-config.yaml --new-config $KUBEADMF
     sed -i 's/controlPlaneComponentHealthCheck.*/controlPlaneComponentHealthCheck: 30s/g' $KUBEADMF
@@ -21,6 +27,8 @@
     kubeadm init --upload-certs --config $KUBEADMF
     EOF
     bash /root/init-k8s.sh | tee {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log
+  args:
+    executable: /bin/bash
   when:
     - inventory_hostname == groups['master'][0]
     - "'kubeadm_control_plane' in k8s_install_services"
@@ -33,9 +41,11 @@
     - inventory_hostname == groups['master'][0]
     - __init_cluster is defined
 
-- name: print join node command
+- name: Generate kubeadm worker join command
   register: __join_command
   shell: kubeadm token create --print-join-command
+  args:
+    executable: /bin/bash
   when: >
     inventory_hostname == groups['master'][0]
     and (
@@ -43,9 +53,11 @@
       or 'kubeadm_join' in k8s_install_services
     )
 
-- name: re-upload key
+- name: Upload control-plane certificates and capture certificate key
   register: __cert_key
   shell: kubeadm init phase upload-certs --upload-certs
+  args:
+    executable: /bin/bash
   when: >
     inventory_hostname == groups['master'][0]
     and (
@@ -53,7 +65,7 @@
       or 'kubeadm_join' in k8s_install_services
     )
 
-- name: join control plane
+- name: Build kubeadm join commands for control-plane and worker nodes
   set_fact:
     control_join: |
       {{ __join_command.stdout }} --control-plane --certificate-key {{ __cert_key.stdout_lines[2] }}
@@ -78,9 +90,12 @@
       or 'kubeadm_join' in k8s_install_services
     )
 
-- name: regen script for used later
+- name: Install helper script to regenerate kubeadm join commands
   shell: |
+    set -Eeuo pipefail
     cat > /root/regen_join_command.sh <<'EOF'
+    set -Eeuo pipefail
+    trap 'echo "[ERROR] regen_join_command.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
     ISC=$(kubectl get node $(echo $(hostname) | tr '[:upper:]' '[:lower:]') --show-labels | grep control-plane)
     if [[ -z "$ISC" ]]; then
           echo must run on a control/master node. Cannot run in a normal client.
@@ -96,6 +111,8 @@
       $CJOIN
     EOM
     EOF
+  args:
+    executable: /bin/bash
   when: >
     inventory_hostname == groups['master'][0]
     and (

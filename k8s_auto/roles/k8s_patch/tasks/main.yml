@@ -1,23 +1,7 @@
 ---
-- name: Update config manifests kubernetes
+- name: Patch Kubernetes static pod resources and arguments
   include_tasks: update_resources.yml
-  loop:
-    - name: etcd
-      resources: {requests: {cpu: "{{ etcd_requests_cpu }}", memory: "{{ etcd_requests_memory }}"}, limits: {cpu: "{{ etcd_limits_cpu }}", memory: "{{ etcd_limits_memory }}"}}
-      args: []
-    - name: kube-apiserver
-      resources: {requests: {cpu: "{{ apiserver_requests_cpu }}", memory: "{{ apiserver_requests_memory }}"}, limits: {cpu: "{{ apiserver_limits_cpu }}", memory: "{{ apiserver_limits_memory }}"}}
-      args:
-        - "--profiling=false"
-        - "--kubelet-certificate-authority=/etc/kubernetes/pki/ca.crt"
-    - name: kube-controller-manager
-      resources: {requests: {cpu: "{{ controller_manager_requests_cpu }}", memory: "{{ controller_manager_requests_memory }}"}, limits: {cpu: "{{ controller_manager_limits_cpu }}", memory: "{{ controller_manager_limits_memory }}"}}
-      args:
-        - "--profiling=false"
-    - name: kube-scheduler
-      resources: {requests: {cpu: "{{ scheduler_requests_cpu }}", memory: "{{ scheduler_requests_memory }}"}, limits: {cpu: "{{ scheduler_limits_cpu }}", memory: "{{ scheduler_limits_memory }}"}}
-      args:
-        - "--profiling=false"
+  loop: "{{ k8s_static_pod_patches }}"
   when:
     - "'master' in group_names"
     - "'k8s_patch' in k8s_install_services"

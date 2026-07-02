@@ -1,0 +1,32 @@
+---
+- name: Set Fluent Bit render directory
+  set_fact:
+    __fluentbit_render_dir: "{{ __bootstrap_dir | default('/root/kubebootstrap') }}/fluentbit"
+
+- name: Create Fluent Bit render directory
+  file:
+    path: "{{ __fluentbit_render_dir }}"
+    state: directory
+    recurse: true
+
+- name: Render Fluent Bit manifests
+  loop:
+    - namespace.yaml.j2
+    - rbac.yaml.j2
+    - configmap.yaml.j2
+    - daemonset.yaml.j2
+    - service.yaml.j2
+  template:
+    src: "{{ item }}"
+    dest: "{{ __fluentbit_render_dir }}/{{ item | replace('.j2', '') }}"
+
+- name: Apply Fluent Bit manifests
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __fluentbit_render_dir }}/namespace.yaml
+    kubectl apply -f {{ __fluentbit_render_dir }}/rbac.yaml
+    kubectl apply -f {{ __fluentbit_render_dir }}/configmap.yaml
+    kubectl apply -f {{ __fluentbit_render_dir }}/daemonset.yaml
+    kubectl apply -f {{ __fluentbit_render_dir }}/service.yaml
+  args:
+    executable: /bin/bash

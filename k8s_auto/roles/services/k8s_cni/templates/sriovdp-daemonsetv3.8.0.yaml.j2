@@ -54,12 +54,7 @@ spec:
         securityContext:
           privileged: true
         resources:
-          requests:
-            cpu: "250m"
-            memory: "40Mi"
-          limits:
-            cpu: 1
-            memory: "200Mi"
+{{ k8s_resources.sriov_device_plugin | to_nice_yaml(indent=2) | indent(10, true) }}
         volumeMounts:
         - name: devicesock
           mountPath: /var/lib/kubelet/device-plugins

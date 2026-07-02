@@ -6,6 +6,7 @@
     - group_vars/all.yml
     - group_vars/images.yml
     - group_vars/services.yml
+    - group_vars/resources.yml
   tasks:
     - name: Install enabled extra service roles
       include_role:

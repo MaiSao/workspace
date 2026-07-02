@@ -1,4 +1,6 @@
 #!/bin/env bash
+set -Eeuo pipefail
+trap 'echo "[ERROR] k8s-ha-bootstrap.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 dnf install -y kubectl haproxy keepalived k9s
 setsebool -P haproxy_connect_any=1 || true

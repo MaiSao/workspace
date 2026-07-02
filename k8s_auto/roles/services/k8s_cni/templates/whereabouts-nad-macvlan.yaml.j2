@@ -1,0 +1,32 @@
+{% for network in macvlan_networks %}
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: {{ network.name }}
+  namespace: {{ network.namespace | default(macvlan_defaults.namespace) }}
+spec:
+  config: |-
+    {
+      "cniVersion": "{{ network.cni_version | default(macvlan_defaults.cni_version) }}",
+      "type": "{{ network.type | default(macvlan_defaults.type) }}",
+      "master": "{{ network.master_interface }}",
+      "mode": "{{ network.mode | default(macvlan_defaults.mode) }}",
+      "ipam": {
+        "type": "{{ network.ipam_type | default(macvlan_defaults.ipam_type) }}",
+        "range": "{{ network.ip_range }}",
+{% if network.range_start is defined %}
+        "range_start": "{{ network.range_start }}",
+{% endif %}
+{% if network.range_end is defined %}
+        "range_end": "{{ network.range_end }}",
+{% endif %}
+{% if network.exclude is defined %}
+        "exclude": {{ network.exclude | to_json }},
+{% endif %}
+        "gateway": "{{ network.gateway }}"
+      }
+    }
+{% if not loop.last %}
+---
+{% endif %}
+{% endfor %}

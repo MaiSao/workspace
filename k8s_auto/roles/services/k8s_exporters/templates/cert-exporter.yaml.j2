@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    app: cert-exporter-nodes
+  name: cert-exporter-nodes
+  namespace: kube-system
+spec:
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      name: cert-exporter-nodes
+  template:
+    metadata:
+      annotations:
+        prometheus.io/port: "8080"
+        prometheus.io/scrape: "true"
+      labels:
+        name: cert-exporter-nodes
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: cert-exporter-nodes
+          image: {{ __registry_prefix }}/{{ cert_exporter_image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - ./app
+          args:
+            - --include-cert-glob=/crt/*/*.crt
+            - --prometheus-disable-exporter-metrics
+            - --logtostderr
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          resources:
+{{ k8s_resources.cert_exporter | to_nice_yaml(indent=2) | indent(12, true) }}
+          securityContext:
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - mountPath: /crt/kubenetes
+              mountPropagation: HostToContainer
+              name: kubernetes
+              readOnly: true
+            - mountPath: /crt/etcd
+              mountPropagation: HostToContainer
+              name: etcd
+              readOnly: true
+      dnsPolicy: ClusterFirst
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsUser: 1000
+      volumes:
+        - name: kubernetes
+          hostPath:
+            path: /etc/kubernetes/pki/
+            type: Directory
+        - name: etcd
+          hostPath:
+            path: /etc/kubernetes/pki/etcd/
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/cert-scrape: "yes"
+  labels:
+    name: cert-exporter-nodes
+  name: cert-exporter
+  namespace: kube-system
+spec:
+  ports:
+    - name: exporter
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    name: cert-exporter-nodes
+  type: ClusterIP

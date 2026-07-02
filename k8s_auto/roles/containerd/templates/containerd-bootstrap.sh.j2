@@ -1,4 +1,6 @@
 #!/bin/env bash
+set -Eeuo pipefail
+trap 'echo "[ERROR] containerd-bootstrap.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 
 dnf install containerd.io -y
 

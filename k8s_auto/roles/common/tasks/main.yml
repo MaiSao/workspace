@@ -1,12 +1,12 @@
 ---
-- name: set the bootstrap dir
+- name: Set bootstrap directory and runtime facts
   tags: ["dryrun"]
   set_fact:
     __bootstrap_dir: /root/kubebootstrap
     __session_time: "{{ now(utc=true, fmt='%Y-%m-%d %H:%M:%S') }}"
     __registry_prefix: "{{ registry_name }}:{{ registry_port }}"
 
-- name: Build container images list based on selection CNI and CNI options
+- name: Build image pull list from selected CNI and network options
   tags: ["dryrun"]
   set_fact:
     container_images: >-
@@ -16,13 +16,14 @@
         else cilium_images if cni_prime == 'cilium'
         else calico_images )
         + (multus_images if multi_network | bool else [] )
+        + (exporter_images if 'exporters' in k8s_install_services else [] )
       }}
 
 - tags: ["debug", "dryrun"]
   debug:
     var: container_images
 
-- name: build init files lists
+- name: Build manifest render list from selected services
   tags: ["dryrun"]
   set_fact:
     list_init_files: >-
@@ -34,6 +35,7 @@
         + coredns_init
         + etcd_operation
         + (multus_init if multi_network | bool else [])
+        + (macvlan_init if (multi_network | bool and multus_macvlan | bool) else [] )
         + (sriov_init if multus_sriov | bool else [] )
         + (add_on_self | list if add_on_self is defined)
       }}
@@ -42,17 +44,20 @@
   debug:
     var: list_init_files
 
-- name: create bootstrap directory
+- name: Create bootstrap log directory
   file:
     path: "{{ __bootstrap_dir }}/logs"
     state: directory
     recurse: yes
 
-- name: log session time
+- name: Record bootstrap session timestamp
   shell: |
+    set -Eeuo pipefail
     echo {{ __session_time }} > {{ __bootstrap_dir }}/logs/latest_session_time
+  args:
+    executable: /bin/bash
 
-- name: generate common bootstrap script for nodes
+- name: Render common node bootstrap script
   tags: ["dryrun"]
   template:
     src: common-bootstrap.sh.j2
@@ -62,9 +67,60 @@
     - "'common' in k8s_install_services"
     - common_bootstrap_enabled | default(false) | bool
 
-- name: execute common bootstrap script
-  shell: bash /root/kube-common-bootstrap.sh | tee {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log
+- name: Run common node bootstrap script
+  shell: |
+    set -Eeuo pipefail
+    bash /root/kube-common-bootstrap.sh | tee {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log
+  args:
+    executable: /bin/bash
   when:
     - "'common' in k8s_install_services"
     - common_bootstrap_enabled | default(false) | bool
     - __rerun_bootstrap is defined
+
+- name: Create etcd client tools staging directory on master nodes
+  file:
+    path: "{{ __bootstrap_dir }}/etcd-tools"
+    state: directory
+  when:
+    - "'common' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Copy etcd client tools archive to master nodes
+  copy:
+    src: etcd-v3.5.15-linux-amd64.tar.gz
+    dest: "{{ __bootstrap_dir }}/etcd-tools/etcd-v3.5.15-linux-amd64.tar.gz"
+    mode: '0644'
+  when:
+    - "'common' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Install etcdctl and etcdutl on master nodes
+  shell: |
+    set -Eeuo pipefail
+    tar -xzf {{ __bootstrap_dir }}/etcd-tools/etcd-v3.5.15-linux-amd64.tar.gz \
+      -C {{ __bootstrap_dir }}/etcd-tools \
+      etcd-v3.5.15-linux-amd64/etcdctl \
+      etcd-v3.5.15-linux-amd64/etcdutl
+    install -m 0755 {{ __bootstrap_dir }}/etcd-tools/etcd-v3.5.15-linux-amd64/etcdctl /usr/local/bin/etcdctl
+    install -m 0755 {{ __bootstrap_dir }}/etcd-tools/etcd-v3.5.15-linux-amd64/etcdutl /usr/local/bin/etcdutl
+  args:
+    creates: /usr/local/bin/etcdutl
+    executable: /bin/bash
+  when:
+    - "'common' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Write etcdctl environment helper on master nodes
+  copy:
+    dest: /etc/profile.d/etcdctl.sh
+    mode: '0644'
+    content: |
+      export ETCDCTL_API=3
+      export ETCDCTL_ENDPOINTS=https://127.0.0.1:2379
+      export ETCDCTL_CACERT=/etc/kubernetes/pki/etcd/ca.crt
+      export ETCDCTL_CERT=/etc/kubernetes/pki/etcd/server.crt
+      export ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key
+  when:
+    - "'common' in k8s_install_services"
+    - "'master' in group_names"

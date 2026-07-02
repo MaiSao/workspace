@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: snmp-switch-exporter
+  namespace: kube-system
+  labels:
+    app: snmp-switch-exporter
+spec:
+  selector:
+    matchLabels:
+      app: snmp-switch-exporter
+  template:
+    metadata:
+      labels:
+        app: snmp-switch-exporter
+    spec:
+      hostNetwork: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - effect: NoExecute
+          operator: Exists
+      containers:
+        - name: snmp-switch-exporter
+          image: harbor-registry:8018/vht/mano/snmp-switch-exporter:v0.15.0
+          imagePullPolicy: Always
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 20m
+              memory: 250Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /etc/snmp_exporter
+              name: snmp
+      volumes:
+        - name: snmp
+          hostPath:
+            path: /etc/snmp_exporter
+            type: DirectoryOrCreate

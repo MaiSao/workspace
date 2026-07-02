@@ -1,0 +1,29 @@
+[SERVICE]
+    Flush        5
+    Daemon       Off
+    Log_Level    info
+    Parsers_File parsers.conf
+    Parsers_File multiline.conf
+    HTTP_Server  On
+    HTTP_Listen  0.0.0.0
+    HTTP_Port    2020
+    Health_Check On
+    storage.path              /data/flb-storage
+    storage.sync              normal
+    storage.checksum          off
+    storage.backlog.mem_limit 512M
+    storage.metrics on
+    storage.max_chunks_up 4096
+
+
+@SET USER_ID=flb_user
+@SET HOST_IP=0.0.0.0
+@SET CHUNK_SIZE=1M
+@SET BUFF_SIZE=5M
+@SET MEM_SIZE=2G
+@SET MEDIUM_MEM_SIZE=4G
+@SET LARGE_MEM_SIZE=8G
+
+@INCLUDE input.conf
+@INCLUDE filter.conf
+@INCLUDE output.conf

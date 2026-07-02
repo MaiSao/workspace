@@ -41,14 +41,15 @@ Review these files before running:
 
 - `group_vars/all.yml`: Kubernetes version, networking, registry, repo, VIP, audit, etcd, containerd, and bootstrap settings.
 - `group_vars/images.yml`: image names and image pull checklists.
-- `group_vars/services.yml`: install phase selection, manifest template lists, extra service catalog, and static pod resources.
+- `group_vars/services.yml`: install phase selection, manifest template lists, and extra service catalog.
+- `group_vars/resources.yml`: resource requests/limits for static pods, CNI, add-ons, CoreDNS, and kube-proxy.
 
 ## 5. Role Layout
 
 The installer is split by responsibility:
 
 ```text
-roles/common/                 OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap
+roles/common/                 OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap, etcd client tools
 roles/containerd/             containerd package, registry config, crictl, service start
 roles/k8s_ha/                 HAProxy, Keepalived, API VIP, health check
 roles/kubeadm_prepare/        audit policy and kubeadm config rendering
@@ -56,7 +57,12 @@ roles/kubeadm_control_plane/  kubeadm init and join command generation
 roles/kubeadm_join/           worker/control-plane join logic
 roles/kubeconfig/             admin kubeconfig setup for master users
 roles/services/k8s_cni/       Calico, Multus, Whereabouts, SR-IOV, CoreDNS
-roles/services/k8s_addons/    metrics-server, kube-state-metrics, etcd jobs
+roles/services/k8s_addons/    metrics-server, kube-state-metrics, kubelet CSR approver, Kyverno, etcd jobs
+roles/services/k8s_exporters/ optional cert, IP pool, SNMP, and SNMP switch exporters
+roles/services/fluentbit/     optional Fluent Bit extra service for cluster, host, and application logs
+roles/services/local_path_provisioner/ optional Rancher local-path storage provisioner
+roles/services/elasticsearch/ optional Elasticsearch, Kibana, and Elasticsearch exporter stack
+roles/k8s_resources/          kubectl resource updates for kubeadm-created workloads
 roles/k8s_patch/              static pod resource/argument patching
 ```
 
@@ -74,9 +80,10 @@ k8s_default_services:
   - kubeadm_prepare
   - kubeadm_control_plane
   - kubeconfig
-  - kubeadm_join
   - cni
+  - kubeadm_join
   - addons
+  - k8s_resources
   - k8s_patch
 ```
 
@@ -88,6 +95,22 @@ Example: run only CNI after the cluster exists:
 ansible-playbook -i inventory.ini site.yml -e 'k8s_install_services=["cni"]'
 ```
 
+Example: update resource values for kubeadm-created workloads after editing `group_vars/resources.yml`:
+
+```shell
+ansible-playbook -i inventory.ini site.yml -e 'k8s_install_services=["k8s_resources","k8s_patch"]'
+```
+
+Example: run selected exporters after the cluster exists:
+
+```shell
+ansible-playbook -i inventory.ini site.yml \
+  -e 'k8s_install_services=["exporters"]' \
+  -e '{"k8s_exporters":{"cert":{"enabled":true},"ip_pools":{"enabled":false},"snmp":{"enabled":true},"snmp_switch":{"enabled":true}}}'
+```
+
+`ip_pools` is applied only when both `k8s_exporters.ip_pools.enabled: true` and `multus_sriov: true`.
+
 ## 7. Deploy Full Cluster
 
 Run from `k8s_auto/`:
@@ -98,7 +121,46 @@ ansible-playbook -i inventory.ini site.yml
 
 Warning: bootstrap tasks reset Kubernetes, CNI, kubeconfig, and etcd state on target nodes. Run only on nodes intended for this cluster.
 
-## 8. Add Future Extra Services
+## 8. Run Extra Services
+
+Extra services are installed by `extra-services.yml` and do not run during the normal full cluster install. Fluent Bit, Local Path Provisioner, and Elasticsearch are registered there by default:
+
+```yaml
+k8s_enabled_extra_services:
+  - name: fluentbit
+    role: services/fluentbit
+    enabled: true
+  - name: local_path_provisioner
+    role: services/local_path_provisioner
+    enabled: true
+  - name: elasticsearch
+    role: services/elasticsearch
+    enabled: true
+    depends_on:
+      - local_path_provisioner
+```
+
+Run from `k8s_auto/`:
+
+```shell
+ansible-playbook -i inventory.ini extra-services.yml
+```
+
+For Fluent Bit, adjust the small deployment variable set in `group_vars/services.yml`: namespace, cluster name, Elasticsearch endpoint/credential, host paths, and `fluentbit_profiles`. Native Fluent Bit config templates live under `roles/services/fluentbit/templates/conf/`.
+
+For Local Path Provisioner, adjust `local_path_default_path`, `local_path_storage_class_name`, and related `local_path_*` values in `group_vars/services.yml`.
+
+For Elasticsearch, label target nodes before applying:
+
+```shell
+kubectl label node <master-node> es-role=master
+kubectl label node <data-node> es-role=data
+kubectl label node <client-node> es-role=client
+```
+
+Elasticsearch depends on Local Path Provisioner for its data and log PVC StorageClasses. Keep `local_path_provisioner` enabled and before `elasticsearch`; the role waits for the provisioner rollout before applying Elasticsearch manifests. Elasticsearch renders separate config maps for master, data, and client node sets while sharing `elasticsearch-log4j2` and `jvm-config`. After the Elasticsearch StatefulSets are ready, a short-lived `elasticsearch-post-install` Job sets the `kibana_system` password from `elasticsearch_kibana_auth`; Kibana and the exporter are applied only after that job succeeds.
+
+## 9. Add Future Extra Services
 
 Create a new role under `roles/services/`, for example:
 
@@ -124,13 +186,8 @@ Then run:
 ansible-playbook -i inventory.ini extra-services.yml
 ```
 
-Current extra services in `group_vars/services.yml`:
+To disable all extra services, override the list:
 
 ```yaml
-k8s_enabled_extra_services:
-  - name: kubelet_csr_approver
-    role: services/kubelet_csr_approver
-    enabled: true
+k8s_enabled_extra_services: []
 ```
-
-This installs the kubelet CSR approver from `roles/services/kubelet_csr_approver`.

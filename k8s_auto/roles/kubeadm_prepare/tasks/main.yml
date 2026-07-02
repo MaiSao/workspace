@@ -1,13 +1,16 @@
 ---
-- name: ensure audit policy file is not a directory (?)
+- name: Prepare Kubernetes audit policy path on control-plane nodes
   shell: |
+    set -Eeuo pipefail
     rm -rf /etc/kubernetes/audit-policy.yaml
     mkdir -p /etc/kubernetes
+  args:
+    executable: /bin/bash
   when: >
     'kubeadm_prepare' in k8s_install_services
     and 'master' in group_names
 
-- name: generate audit polcicy config
+- name: Render Kubernetes audit policy manifest
   template:
     src: audit-policy.yaml.j2
     dest: /etc/kubernetes/audit-policy.yaml
@@ -15,7 +18,7 @@
     'kubeadm_prepare' in k8s_install_services
     and 'master' in group_names
 
-- name: generate kubernetes install files
+- name: Render kubeadm configuration files on bootstrap master
   loop: "{{ kubeadm_init }}"
   template:
     src: "{{ item }}"
