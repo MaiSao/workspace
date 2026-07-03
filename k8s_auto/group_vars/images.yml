@@ -22,11 +22,11 @@ etcd_image: registry.k8s.io/etcd:3.5.15-0
 metrics_server_image: registry.k8s.io/metrics-server:v0.8.0
 kube_state_metrics_image: registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
 kubelet_csr_approver_image: registry.k8s.io/kubelet-csr-approver:v1.2.11
-kyverno_pre_image: mano/kyvernopre:v1.14.4
-kyverno_image: mano/kyverno:v1.14.4
-kyverno_background_controller_image: mano/background-controller:v1.14.4
-kyverno_cleanup_controller_image: mano/cleanup-controller:v1.14.4
-kyverno_reports_controller_image: mano/reports-controller:v1.14.4
+kyverno_pre_image: kyverno/kyvernopre:v1.14.4
+kyverno_image: kyverno/kyverno:v1.14.4
+kyverno_background_controller_image: kyverno/background-controller:v1.14.4
+kyverno_cleanup_controller_image: kyverno/cleanup-controller:v1.14.4
+kyverno_reports_controller_image: kyverno/reports-controller:v1.14.4
 cert_exporter_image: vht/cert-exporter:v2.8.0
 ip_pools_exporter_image: ip-pool-exporter:1.0.3
 snmp_exporter_image: prom/snmp-exporter:v0.15.0-vht

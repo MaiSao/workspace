@@ -95,6 +95,14 @@
     - "'common' in k8s_install_services"
     - "'master' in group_names"
 
+- name: Ensure tar is installed before extracting etcd client tools
+  package:
+    name: tar
+    state: present
+  when:
+    - "'common' in k8s_install_services"
+    - "'master' in group_names"
+
 - name: Install etcdctl and etcdutl on master nodes
   shell: |
     set -Eeuo pipefail

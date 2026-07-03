@@ -11,9 +11,11 @@ rm -rf /home/*/.kube
 rm -rf /root/.kube
 sed -i '/KUBECONFIG/d' /root/.bashrc
 sed -i '/KUBECONFIG/d' /home/*/.bashrc
-systemctl stop kubelet 2> /dev/null
-systemctl disable --now haproxy 2> /dev/null
-systemctl disable --now keepalived 2> /dev/null
+systemctl stop kubelet 2> /dev/null || true
+{% if 'master' in group_names %}
+systemctl disable --now haproxy 2> /dev/null || true
+systemctl disable --now keepalived 2> /dev/null || true
+{% endif %}
 rm -rf /var/lib/etcd
 rm -rf {{ etcdDataDir }}
 
@@ -33,23 +35,35 @@ echo "{{ registry_ip }} {{ registry_name }}" >> /etc/hosts
 
 REPO_PORT={{ repo_port | default('80') }}
 cat <<EOF | tee /etc/yum.repos.d/kubernetes.repo
-[baseos]
-name=baseos
+[rhel89baseos]
+name=rhel89baseos
 gpgcheck=0
 enabled=1
-baseurl=http://repository:$REPO_PORT/BaseOS/
+baseurl=http://repository:$REPO_PORT/rhel89/BaseOS/
 
-[appstream]
-name=appstream
+[rhel89appstream]
+name=rhel89appstream
 gpgcheck=0
 enabled=1
-baseurl=http://repository:$REPO_PORT/AppStream/
+baseurl=http://repository:$REPO_PORT/rhel89/AppStream/
 
-[codeready]
-name=codeready
+# [rhel10]
+# name=rhel10
+# gpgcheck=0
+# enabled=1
+# baseurl=http://repository:$REPO_PORT/rhel10/BaseOS
+
+[epel8]
+name=epel8
 gpgcheck=0
 enabled=1
-baseurl=http://repository:$REPO_PORT/codeready/
+baseurl=http://repository:$REPO_PORT/epel8
+
+# [codeready]
+# name=codeready
+# gpgcheck=0
+# enabled=1
+# baseurl=http://repository:$REPO_PORT/codeready/
 
 [docker-ce]
 name=docker-ce
@@ -70,7 +84,6 @@ gpgcheck=0
 # gpgcheck=0
 EOF
 
-dnf clean metadata
 swapoff -a
 modprobe br_netfilter overlay ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh nf_conntrack
 cat > /etc/modules-load.d/k8s_kernel_modules.conf <<'EOF'

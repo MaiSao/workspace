@@ -1,4 +1,11 @@
 ---
+- name: Create containerd configuration directory
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+  when: "'containerd' in k8s_install_services"
+
 - name: Render containerd CRI configuration
   tags: ["dryrun"]
   template:
