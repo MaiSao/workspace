@@ -49,19 +49,21 @@
 
     - name: Run enabled Kubernetes services
       include_role:
-        name: "{{ k8s_service_roles[item] }}"
+        name: "{{ k8s_service_roles[k8s_service_name] }}"
       loop: "{{ k8s_install_services }}"
       loop_control:
-        label: "{{ item }}"
+        loop_var: k8s_service_name
+        label: "{{ k8s_service_name }}"
       tags: always
 
     - name: Install enabled extra service roles
       include_role:
-        name: "{{ item.role }}"
+        name: "{{ k8s_extra_service.role }}"
       loop: "{{ k8s_enabled_extra_services }}"
       loop_control:
-        label: "{{ item.name }}"
+        loop_var: k8s_extra_service
+        label: "{{ k8s_extra_service.name }}"
       when:
         - inventory_hostname == groups['master'][0]
-        - item.enabled | default(true) | bool
+        - k8s_extra_service.enabled | default(true) | bool
       tags: extra_services

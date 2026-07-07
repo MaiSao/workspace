@@ -1,9 +1,11 @@
 ---
 - name: Pull required Kubernetes images before kubeadm init
   loop: "{{ container_images }}"
+  loop_control:
+    loop_var: kubeadm_image
   shell: |
     set -Eeuo pipefail
-    crictl pull {{ __registry_prefix }}/{{ item }}
+    crictl pull {{ __registry_prefix }}/{{ kubeadm_image }}
   args:
     executable: /bin/bash
   when:
@@ -93,10 +95,12 @@
 
 - name: Publish kubeadm join commands to all inventory hosts
   loop: "{{ groups['all'] }}"
+  loop_control:
+    loop_var: target_host
   set_fact:
     control_join: "{{ hostvars[groups['master'][0]].control_join | trim }}"
     worker_join: "{{ hostvars[groups['master'][0]].worker_join | trim }}"
-  delegate_to: "{{ item }}"
+  delegate_to: "{{ target_host }}"
   delegate_facts: true
   when: >
     inventory_hostname == groups['master'][0]
