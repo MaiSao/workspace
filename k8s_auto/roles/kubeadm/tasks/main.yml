@@ -7,10 +7,10 @@
   include_tasks: init.yml
   when: "'kubeadm' in k8s_install_services"
 
-- name: Configure kubeconfig for master users
-  include_tasks: kubeconfig.yml
-  when: "'kubeadm' in k8s_install_services"
-
 - name: Join additional Kubernetes nodes
   include_tasks: join.yml
+  when: "'kubeadm' in k8s_install_services"
+
+- name: Configure kubeconfig for master users
+  include_tasks: kubeconfig.yml
   when: "'kubeadm' in k8s_install_services"

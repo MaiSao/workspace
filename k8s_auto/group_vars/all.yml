@@ -2,7 +2,9 @@
 # Install plan - service enable catalog
 #---------------------------------------------------
 # Open this section first before every install. It shows every supported built-in
-# service grouped by purpose. Toggle enabled: true/false to choose what runs.
+# service in deterministic phase order. Toggle enabled: true/false to choose
+# what runs. Scope documents where each role is expected to do work when
+# site.yml runs with hosts: all; role-level when conditions enforce it.
 #
 # Full cluster install:
 #   ansible-playbook -i inventory.ini site.yml
@@ -12,104 +14,154 @@
 
 common_bootstrap_enabled: true
 
-k8s_service_groups:
-  base:
-    - name: common
-      enabled: true
-      description: OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap config, and etcd client tools.
-    - name: containerd
-      enabled: true
-      description: Container runtime package, registry config, crictl config, and service start.
+k8s_valid_service_scopes:
+  - all_nodes
+  - master_nodes
+  - bootstrap_master
+  - join_nodes
+  - mixed
 
-  ha:
-    - name: haproxy
-      enabled: true
-      description: Kubernetes API load balancer on master nodes.
-    - name: keepalived
-      enabled: true
-      requires: [haproxy]
-      description: Kubernetes API VIP and health check on master nodes.
+k8s_service_plan:
+  - phase: base
+    description: Node bootstrap services.
+    services:
+      - name: common
+        enabled: true
+        scope: mixed
+        description: OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap config, and master-only etcd client tools.
+      - name: containerd
+        enabled: true
+        scope: all_nodes
+        description: Container runtime package, registry config, crictl config, and service start.
 
-  cluster:
-    - name: kubeadm
-      enabled: true
-      requires: [common, containerd, haproxy, keepalived]
-      description: Audit policy, kubeadm config, init, kubeconfig, join command generation, and node join.
+  - phase: ha
+    description: Kubernetes API HA host services.
+    services:
+      - name: haproxy
+        enabled: true
+        scope: master_nodes
+        description: Kubernetes API load balancer on master nodes.
+      - name: keepalived
+        enabled: true
+        scope: master_nodes
+        requires: [haproxy]
+        description: Kubernetes API VIP and health check on master nodes.
 
-  network:
-    - name: calico
-      enabled: true
-      description: Primary CNI when cni_prime is calico.
-    - name: multus
-      enabled: true
-      description: Multi-network CNI.
-    - name: whereabouts
-      enabled: true
-      requires: [multus]
-      description: IPAM for secondary networks.
-    - name: sriov
-      enabled: false
-      requires: [multus, whereabouts]
-      description: SR-IOV device plugin and SR-IOV NetworkAttachmentDefinitions.
-    - name: macvlan
-      enabled: false
-      requires: [multus, whereabouts]
-      description: macvlan NetworkAttachmentDefinitions.
-    - name: coredns
-      enabled: true
-      description: CoreDNS override manifest and rollout restart.
+  - phase: cluster
+    description: kubeadm cluster bootstrap and join flow.
+    services:
+      - name: kubeadm
+        enabled: true
+        scope: mixed
+        requires: [common, containerd, haproxy, keepalived]
+        description: Audit policy, kubeadm config, init, join command generation, node join, and kubeconfig distribution.
 
-  addons:
-    - name: metrics_server
-      enabled: true
-      description: Kubernetes metrics-server.
-    - name: kube_state_metrics
-      enabled: true
-      description: kube-state-metrics.
-    - name: kubelet_csr_approver
-      enabled: true
-      description: kubelet serving certificate approver.
-    - name: kyverno
-      enabled: true
-      description: Kyverno admission controller and baseline policies.
-    - name: etcd_jobs
-      enabled: true
-      description: etcd backup rotation and defrag jobs.
+  - phase: network
+    description: Cluster networking and NetworkAttachmentDefinitions.
+    services:
+      - name: calico
+        enabled: true
+        scope: bootstrap_master
+        description: Primary CNI when cni_prime is calico.
+      - name: multus
+        enabled: true
+        scope: bootstrap_master
+        description: Multi-network CNI.
+      - name: whereabouts
+        enabled: true
+        scope: bootstrap_master
+        requires: [multus]
+        description: IPAM for secondary networks.
+      - name: sriov
+        enabled: false
+        scope: bootstrap_master
+        requires: [multus, whereabouts]
+        description: SR-IOV device plugin and SR-IOV NetworkAttachmentDefinitions.
+      - name: macvlan
+        enabled: false
+        scope: bootstrap_master
+        requires: [multus, whereabouts]
+        description: macvlan NetworkAttachmentDefinitions.
 
-  observability:
-    - name: cert_exporter
-      enabled: true
-      description: Certificate expiration exporter.
-    - name: snmp_exporter
-      enabled: true
-      description: Installs snmpd host config and deploys SNMP exporter.
-    - name: snmp_switch_exporter
-      enabled: true
-      description: SNMP switch exporter scheduled on master nodes.
-    - name: haproxy_exporter
-      enabled: true
-      requires: [haproxy]
-      description: HAProxy host-service exporter on master nodes.
-    - name: keepalived_exporter
-      enabled: true
-      requires: [keepalived]
-      description: Keepalived host-service exporter on master nodes.
-    - name: ip_pools_exporter
-      enabled: false
-      requires: [sriov]
-      description: SR-IOV IP pools exporter.
+  - phase: addons
+    description: Kubernetes cluster add-ons applied from the bootstrap master.
+    services:
+      - name: coredns
+        enabled: true
+        scope: bootstrap_master
+        description: CoreDNS override manifest and rollout restart.
+      - name: metrics_server
+        enabled: true
+        scope: bootstrap_master
+        description: Kubernetes metrics-server.
+      - name: kube_state_metrics
+        enabled: true
+        scope: bootstrap_master
+        description: kube-state-metrics.
+      - name: kubelet_csr_approver
+        enabled: true
+        scope: bootstrap_master
+        description: kubelet serving certificate approver.
+      - name: kyverno
+        enabled: true
+        scope: bootstrap_master
+        description: Kyverno admission controller and baseline policies.
+      - name: etcd_jobs
+        enabled: true
+        scope: bootstrap_master
+        description: etcd backup rotation and defrag jobs.
 
-  tuning:
-    - name: k8s_tuning
-      enabled: true
-      description: Resource tuning for kubeadm-created workloads and static pod manifest patching.
+  - phase: observability
+    description: Exporters and observability services.
+    services:
+      - name: cert_exporter
+        enabled: true
+        scope: bootstrap_master
+        description: Certificate expiration exporter.
+      - name: snmp_exporter
+        enabled: true
+        scope: mixed
+        description: Installs snmpd on all nodes and deploys SNMP exporter from the bootstrap master.
+      - name: snmp_switch_exporter
+        enabled: true
+        scope: bootstrap_master
+        description: SNMP switch exporter scheduled on master nodes.
+      - name: haproxy_exporter
+        enabled: true
+        scope: master_nodes
+        requires: [haproxy]
+        description: HAProxy host-service exporter on master nodes.
+      - name: keepalived_exporter
+        enabled: true
+        scope: master_nodes
+        requires: [keepalived]
+        description: Keepalived host-service exporter on master nodes.
+      - name: ip_pools_exporter
+        enabled: false
+        scope: bootstrap_master
+        requires: [sriov]
+        description: SR-IOV IP pools exporter.
+
+  - phase: tuning
+    description: Post-install resource and static pod tuning.
+    services:
+      - name: k8s_tuning
+        enabled: true
+        scope: mixed
+        description: Resource tuning for kubeadm-created workloads and static pod manifest patching.
+
+k8s_install_service_details: >-
+  {{
+    k8s_service_plan
+    | map(attribute='services')
+    | flatten
+    | selectattr('enabled', 'equalto', true)
+    | list
+  }}
 
 k8s_install_services: >-
   {{
-    k8s_service_groups
-    | dict2items
-    | map(attribute='value')
-    | flatten
+    k8s_install_service_details
     | selectattr('enabled', 'equalto', true)
     | map(attribute='name')
     | list
@@ -121,12 +173,15 @@ k8s_install_services: >-
 k8s_enabled_extra_services:
   - name: fluentbit
     role: services/fluentbit
+    scope: bootstrap_master
     enabled: true
   - name: local_path_provisioner
     role: services/local_path_provisioner
+    scope: bootstrap_master
     enabled: true
   - name: elasticsearch
     role: services/elasticsearch
+    scope: bootstrap_master
     enabled: true
     depends_on:
       - local_path_provisioner
@@ -283,14 +338,44 @@ registry_ip: 172.20.3.71
 registry_name: docker-registry
 registry_port: 4000
 imageRepositoryProject: registry.k8s.io
+__registry_prefix: "{{ registry_name }}:{{ registry_port }}"
 
 #---------------------------------------------------
 # Red Hat dnf/yum repository endpoint
 #---------------------------------------------------
-# Repository host written into /etc/hosts as "repository". Target nodes must be
-# able to download BaseOS, AppStream, codeready, docker-ce, and k8s-rh8 paths.
+# Repository host written into /etc/hosts as "repository". Target nodes use
+# os_repositories below to generate /etc/yum.repos.d/kubernetes.repo.
 repo_ip: 172.20.3.71
+repo_name: repository
 repo_port: 8080
+repo_protocol: http
+
+os_repositories:
+  - id: rhel89baseos
+    name: rhel89baseos
+    baseurl: "{{ repo_protocol }}://{{ repo_name }}:{{ repo_port }}/rhel89/BaseOS/"
+    enabled: 1
+    gpgcheck: 0
+  - id: rhel89appstream
+    name: rhel89appstream
+    baseurl: "{{ repo_protocol }}://{{ repo_name }}:{{ repo_port }}/rhel89/AppStream/"
+    enabled: 1
+    gpgcheck: 0
+  - id: epel8
+    name: epel8
+    baseurl: "{{ repo_protocol }}://{{ repo_name }}:{{ repo_port }}/epel8"
+    enabled: 1
+    gpgcheck: 0
+  - id: docker-ce
+    name: docker-ce
+    baseurl: "{{ repo_protocol }}://{{ repo_name }}:{{ repo_port }}/docker-ce-rh8"
+    enabled: 1
+    gpgcheck: 0
+  - id: kubernetes
+    name: Kubernetes
+    baseurl: "{{ repo_protocol }}://{{ repo_name }}:{{ repo_port }}/k8s-rh8"
+    enabled: 1
+    gpgcheck: 0
 
 #---------------------------------------------------
 # Data, audit, and certificate paths
@@ -311,3 +396,4 @@ master_user: ["root", "vt_admin"]
 # Controls whether common bootstrap scripts are allowed to rerun. true resets
 # Kubernetes/CNI/etcd state, so use carefully on existing clusters.
 __rerun_bootstrap: true
+__bootstrap_dir: /root/kubebootstrap

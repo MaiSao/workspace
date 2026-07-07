@@ -1,11 +1,4 @@
 ---
-- name: Set bootstrap directory and runtime facts
-  tags: ["dryrun"]
-  set_fact:
-    __bootstrap_dir: /root/kubebootstrap
-    __session_time: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
-    __registry_prefix: "{{ registry_name }}:{{ registry_port }}"
-
 - name: Build image pull list from selected services and network options
   tags: ["dryrun"]
   set_fact:
@@ -46,19 +39,6 @@
 - tags: ["debug", "dryrun"]
   debug:
     var: list_init_files
-
-- name: Create bootstrap log directory
-  file:
-    path: "{{ __bootstrap_dir }}/logs"
-    state: directory
-    recurse: yes
-
-- name: Record bootstrap session timestamp
-  shell: |
-    set -Eeuo pipefail
-    echo {{ __session_time }} > {{ __bootstrap_dir }}/logs/latest_session_time
-  args:
-    executable: /bin/bash
 
 - name: Render common node bootstrap script
   tags: ["dryrun"]

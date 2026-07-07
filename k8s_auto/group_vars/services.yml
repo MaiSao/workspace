@@ -169,7 +169,7 @@ kyverno_init:
 # Exporter service configuration
 #---------------------------------------------------
 # Exporters are split into service-level roles and enabled from
-# k8s_service_groups in group_vars/all.yml. IP pools exporter also requires
+# k8s_service_plan in group_vars/all.yml. IP pools exporter also requires
 # multus_sriov: true because it reports SR-IOV IP pool state.
 haproxy_exporter:
   package_name: haproxy_exporter

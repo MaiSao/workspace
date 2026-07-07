@@ -11,7 +11,7 @@
 - name: Apply Kyverno and policies
   shell: |
     set -Eeuo pipefail
-    kubectl apply -f {{ __bootstrap_dir }}/kyverno-v1.14.4.yaml
+    kubectl create -f {{ __bootstrap_dir }}/kyverno-v1.14.4.yaml
     kubectl wait --for=condition=established crd/clusterpolicies.kyverno.io --timeout=120s
     kubectl wait --for=condition=available deployment -n kyverno --all --timeout=300s
     kubectl apply \

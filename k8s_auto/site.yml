@@ -8,12 +8,58 @@
     - group_vars/services.yml
     - group_vars/resources.yml
   tasks:
+    - name: Set global bootstrap runtime facts
+      set_fact:
+        __session_time: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+      tags: always
+
+    - name: Create global bootstrap log directory
+      file:
+        path: "{{ __bootstrap_dir }}/logs"
+        state: directory
+        recurse: yes
+      tags: always
+
+    - name: Record global bootstrap session timestamp
+      shell: |
+        set -Eeuo pipefail
+        echo {{ __session_time }} > {{ __bootstrap_dir }}/logs/latest_session_time
+      args:
+        executable: /bin/bash
+      tags: always
+
     - name: Validate enabled Kubernetes services have role mappings
       assert:
         that:
           - (k8s_install_services | difference(k8s_service_roles.keys() | list)) | length == 0
         fail_msg: "Missing role mapping for enabled services: {{ k8s_install_services | difference(k8s_service_roles.keys() | list) }}"
         success_msg: "All enabled Kubernetes services have role mappings."
+      run_once: true
+      tags: always
+
+    - name: Validate enabled Kubernetes services have supported scopes
+      assert:
+        that:
+          - (k8s_install_service_details | selectattr('scope', 'undefined') | list | length) == 0
+          - (k8s_install_service_details | map(attribute='scope') | list | difference(k8s_valid_service_scopes)) | length == 0
+        fail_msg: "Invalid or missing scope in enabled services. Supported scopes: {{ k8s_valid_service_scopes }}"
+        success_msg: "All enabled Kubernetes services have supported scopes."
+      run_once: true
+      tags: always
+
+    - name: Show effective Kubernetes install order
+      debug:
+        msg: "{{ k8s_install_services | join(' -> ') }}"
+      run_once: true
+      tags: always
+
+    - name: Show enabled Kubernetes service scope and role mapping
+      debug:
+        msg: "{{ item.name }} [{{ item.scope }}] -> {{ k8s_service_roles[item.name] }}"
+      loop: "{{ k8s_install_service_details }}"
+      loop_control:
+        label: "{{ item.name }}"
+      run_once: true
       tags: always
 
     - name: Run enabled Kubernetes services

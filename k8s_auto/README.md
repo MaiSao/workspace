@@ -77,45 +77,48 @@ roles/services/elasticsearch/ optional Elasticsearch, Kibana, and Elasticsearch 
 roles/k8s_tuning/             workload resources and static pod tuning
 ```
 
-`site.yml` includes enabled roles from `k8s_service_groups` in `group_vars/all.yml`. Role-level `when` checks restrict master-only work, first-master work, worker joins, and optional services.
+`site.yml` includes enabled roles from ordered `k8s_service_plan` in `group_vars/all.yml`. Role-level `when` checks restrict all-node, master-only, first-master, worker join, and optional service work.
 
 ## 6. Service Catalog
 
-Built-in services are defined as an enable catalog at the top of `group_vars/all.yml`:
+Built-in services are defined as an ordered enable catalog at the top of `group_vars/all.yml`:
 
 ```yaml
-k8s_service_groups:
-  network:
-    - name: calico
-      enabled: true
-      description: Primary CNI when cni_prime is calico.
-    - name: sriov
-      enabled: false
-      requires: [multus, whereabouts]
-      description: SR-IOV device plugin and NADs.
+k8s_service_plan:
+  - phase: network
+    services:
+      - name: calico
+        enabled: true
+        scope: bootstrap_master
+        description: Primary CNI when cni_prime is calico.
+      - name: sriov
+        enabled: false
+        scope: bootstrap_master
+        requires: [multus, whereabouts]
+        description: SR-IOV device plugin and NADs.
 ```
 
-Normal full install runs services where `enabled: true`. To skip or add a service, change its `enabled` value in `group_vars/all.yml`.
+Normal full install runs services where `enabled: true`, in the order phases are listed. To skip or add a service, change its `enabled` value in `group_vars/all.yml`. The `scope` field documents where the role is expected to do work when `site.yml` runs with `hosts: all`.
 
 Example: run only CoreDNS after the cluster exists by overriding the enabled catalog:
 
 ```shell
 ansible-playbook -i inventory.ini site.yml \
-  -e '{"k8s_service_groups":{"base":[],"ha":[],"cluster":[],"network":[{"name":"coredns","enabled":true}],"addons":[],"observability":[],"tuning":[]}}'
+  -e '{"k8s_service_plan":[{"phase":"addons","services":[{"name":"coredns","enabled":true,"scope":"bootstrap_master"}]}]}'
 ```
 
 Example: update resource values for kubeadm-created workloads after editing `group_vars/resources.yml`:
 
 ```shell
 ansible-playbook -i inventory.ini site.yml \
-  -e '{"k8s_service_groups":{"base":[],"ha":[],"cluster":[],"network":[],"addons":[],"observability":[],"tuning":[{"name":"k8s_tuning","enabled":true}]}}'
+  -e '{"k8s_service_plan":[{"phase":"tuning","services":[{"name":"k8s_tuning","enabled":true,"scope":"mixed"}]}]}'
 ```
 
 Example: run selected exporters after the cluster exists:
 
 ```shell
 ansible-playbook -i inventory.ini site.yml \
-  -e '{"k8s_service_groups":{"base":[],"ha":[],"cluster":[],"network":[],"addons":[],"observability":[{"name":"cert_exporter","enabled":true},{"name":"snmp_exporter","enabled":true},{"name":"haproxy_exporter","enabled":true}],"tuning":[]}}'
+  -e '{"k8s_service_plan":[{"phase":"observability","services":[{"name":"cert_exporter","enabled":true,"scope":"bootstrap_master"},{"name":"snmp_exporter","enabled":true,"scope":"mixed"},{"name":"haproxy_exporter","enabled":true,"scope":"master_nodes"}]}]}'
 ```
 
 `requires` is documentation for operators. `ip_pools_exporter` also requires `multus_sriov: true` in its role conditions.

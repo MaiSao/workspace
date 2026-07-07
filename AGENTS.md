@@ -62,7 +62,7 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 - Earlier service-gating work in `roles/kubernetes-optimized/tasks/main.yml` was superseded by the split-role `site.yml`; the old unused role has now been removed.
 - Added tags matching service names for easier inspection or manual runs. Normal full install still uses `ansible-playbook -i inventory.ini site.yml` with no tag requirement.
 - Join command generation now lives in the unified `kubeadm` role.
-- To skip or enable a service, change its `enabled` value in `k8s_service_groups` at the top of `group_vars/all.yml`.
+- To skip or enable a service, change its `enabled` value in ordered `k8s_service_plan` at the top of `group_vars/all.yml`. Each service also has a `scope` field that documents where it runs with `hosts: all`.
 - Extra service selection now lives in `group_vars/all.yml`; detailed extra-service configuration remains in `group_vars/services.yml`.
 - Extra service roles now run from the post-task loop in `site.yml`; `extra-services.yml` was removed so `site.yml` is the single entry point.
 
@@ -109,7 +109,7 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 ## Change Log For Exporters
 
 - Split exporter installation into individual service roles: `cert_exporter`, `ip_pools_exporter`, `snmp_exporter`, `snmp_switch_exporter`, `haproxy_exporter`, and `keepalived_exporter`.
-- Exporters are enabled from `k8s_service_groups.observability` in `group_vars/all.yml`; host exporter config lives in `group_vars/services.yml`.
+- Exporters are enabled from the `observability` phase in `k8s_service_plan`; host exporter config lives in `group_vars/services.yml`.
 - SNMP exporter installs and starts `snmpd` on target nodes, then deploys its DaemonSet with `snmp.yml` mounted from `/etc/snmp_exporter`.
 - cert-exporter and snmp-switch-exporter are scheduled only on master/control-plane nodes; ip-pools-exporter is also gated by `multus_sriov: true`.
 - Added optional HAProxy and Keepalived host-service exporters for master nodes, installed from the OS repository and managed with systemd units.
@@ -145,6 +145,19 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 - Added `set -Eeuo pipefail` and Bash execution to shell tasks that run generated scripts or command pipelines.
 - Added error traps to generated bootstrap/deploy scripts so failures print the failed line and command before Ansible stops.
 - Preserved intentional skip behavior where `ignore_errors` is explicitly set, such as kubeconfig creation for missing local users.
+
+## Change Log For Global Runtime Vars And Repositories
+
+- Moved bootstrap session setup to `site.yml` so all roles can use `__bootstrap_dir`, `__session_time`, and shared log paths without depending on the `common` role.
+- Kept `__bootstrap_dir` and `__registry_prefix` in `group_vars/all.yml` as global operator variables used by multiple roles and templates.
+- Replaced hardcoded yum/dnf repository blocks in `common-bootstrap.sh.j2` with the `os_repositories` list from `group_vars/all.yml`.
+- Reordered kubeadm tasks so additional control-plane nodes join before kubeconfig is distributed to configured master users.
+
+## Change Log For Ordered Service Plan
+
+- Replaced the dictionary-style `k8s_service_groups` with ordered `k8s_service_plan` so install order no longer depends on YAML dictionary ordering.
+- Added `scope` metadata for built-in services to document whether work runs on all nodes, master nodes, the bootstrap master, join nodes, or mixed locations under `hosts: all`.
+- Added `site.yml` validation and debug output for effective service order plus service scope-to-role mapping.
 - Standardized install/bootstrap script logging for common, containerd, kubeadm init, kubeadm join, and join-command regeneration.
 - Script-running tasks now capture stderr with stdout into `/root/kubebootstrap/logs/` and print the last 120 log lines on failure.
 - Runtime scripts and service units are intentionally not changed for Ansible logging behavior.

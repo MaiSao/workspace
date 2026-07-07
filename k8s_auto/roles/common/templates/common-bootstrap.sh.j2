@@ -38,40 +38,20 @@ cat > /etc/hosts <<'EOF'
 EOF
 sed -i '/repository/d' /etc/hosts
 sed -i '/{{ registry_name }}/d' /etc/hosts
-echo "{{ repo_ip }} repository" >> /etc/hosts
+echo "{{ repo_ip }} {{ repo_name | default('repository') }}" >> /etc/hosts
 echo "{{ registry_ip }} {{ registry_name }}" >> /etc/hosts
 
-REPO_PORT={{ repo_port | default('80') }}
 cat <<EOF | tee /etc/yum.repos.d/kubernetes.repo
-[rhel89baseos]
-name=rhel89baseos
-gpgcheck=0
-enabled=1
-baseurl=http://repository:$REPO_PORT/rhel89/BaseOS/
+{% for repo in os_repositories %}
+[{{ repo.id }}]
+name={{ repo.name }}
+baseurl={{ repo.baseurl }}
+enabled={{ repo.enabled | default(1) }}
+gpgcheck={{ repo.gpgcheck | default(0) }}
+{% if repo.module_hotfixes is defined %}module_hotfixes={{ repo.module_hotfixes }}{% endif %}
+{% if repo.priority is defined %}priority={{ repo.priority }}{% endif %}
 
-[rhel89appstream]
-name=rhel89appstream
-gpgcheck=0
-enabled=1
-baseurl=http://repository:$REPO_PORT/rhel89/AppStream/
-
-[epel8]
-name=epel8
-gpgcheck=0
-enabled=1
-baseurl=http://repository:$REPO_PORT/epel8
-
-[docker-ce]
-name=docker-ce
-gpgcheck=0
-enabled=1
-baseurl=http://repository:$REPO_PORT/docker-ce-rh8
-
-[kubernetes]
-name=Kubernetes
-baseurl=http://repository:$REPO_PORT/k8s-rh8
-enabled=1
-gpgcheck=0
+{% endfor %}
 EOF
 
 swapoff -a
