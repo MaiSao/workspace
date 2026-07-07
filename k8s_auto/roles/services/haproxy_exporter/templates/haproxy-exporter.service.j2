@@ -1,0 +1,16 @@
+[Unit]
+Description=Prometheus HAProxy Exporter
+After=network-online.target haproxy.service
+Wants=network-online.target
+Requires=haproxy.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart={{ haproxy_exporter.binary_path }} --web.listen-address={{ haproxy_exporter.listen_address }} --haproxy.scrape-uri={{ haproxy_exporter.scrape_uri }} {{ haproxy_exporter.extra_args | default('') }}
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

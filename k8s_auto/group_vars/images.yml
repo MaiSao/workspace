@@ -50,7 +50,7 @@ pause_image: registry.k8s.io/pause:3.10
 #---------------------------------------------------
 # Image pull lists
 #---------------------------------------------------
-# These lists are used by kubeadm_control_plane to verify images are available
+# These lists are used by kubeadm to verify images are available
 # from the configured registry before kubeadm init and add-on installation.
 #---------------------------------------------------
 
@@ -70,7 +70,7 @@ multus_images:
   - "{{ whereabouts_image }}"
   - "{{ multus_cni_image }}"
 
-# Operational add-on images used by services/k8s_addons.
+# Operational add-on images used by service-level add-on roles.
 operation_images:
   - "{{ etcd_backup_image }}"
   - "{{ metrics_server_image }}"

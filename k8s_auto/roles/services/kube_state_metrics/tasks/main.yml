@@ -1,0 +1,18 @@
+---
+- name: Render kube-state-metrics manifest on bootstrap master
+  template:
+    src: kube-state-metrics.yaml.j2
+    dest: "{{ __bootstrap_dir }}/kube-state-metrics.yaml"
+  when:
+    - "'kube_state_metrics' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+
+- name: Apply kube-state-metrics
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/kube-state-metrics.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'kube_state_metrics' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]

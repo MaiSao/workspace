@@ -3,10 +3,10 @@
   tags: ["dryrun"]
   set_fact:
     __bootstrap_dir: /root/kubebootstrap
-    __session_time: "{{ now(utc=true, fmt='%Y-%m-%d %H:%M:%S') }}"
+    __session_time: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
     __registry_prefix: "{{ registry_name }}:{{ registry_port }}"
 
-- name: Build image pull list from selected CNI and network options
+- name: Build image pull list from selected services and network options
   tags: ["dryrun"]
   set_fact:
     container_images: >-
@@ -16,14 +16,14 @@
         else cilium_images if cni_prime == 'cilium'
         else calico_images )
         + (multus_images if multi_network | bool else [] )
-        + (exporter_images if 'exporters' in k8s_install_services else [] )
+        + exporter_images
       }}
 
 - tags: ["debug", "dryrun"]
   debug:
     var: container_images
 
-- name: Build manifest render list from selected services
+- name: Build manifest render list for dry-run visibility
   tags: ["dryrun"]
   set_fact:
     list_init_files: >-
@@ -35,9 +35,12 @@
         + coredns_init
         + etcd_operation
         + (multus_init if multi_network | bool else [])
+        + (whereabouts_init if multi_network | bool else [])
         + (macvlan_init if (multi_network | bool and multus_macvlan | bool) else [] )
         + (sriov_init if multus_sriov | bool else [] )
-        + (add_on_self | list if add_on_self is defined)
+        + ['metric-server-v0.8.0.yaml.j2', 'kube-state-metrics.yaml.j2']
+        + (['kubelet-csr-approver.yaml.j2'] if kubelet_serverTLSBootstrap | default(false) | bool else [])
+        + kyverno_init
       }}
 
 - tags: ["debug", "dryrun"]
@@ -67,12 +70,27 @@
     - "'common' in k8s_install_services"
     - common_bootstrap_enabled | default(false) | bool
 
-- name: Run common node bootstrap script
-  shell: |
-    set -Eeuo pipefail
-    bash /root/kube-common-bootstrap.sh | tee {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log
-  args:
-    executable: /bin/bash
+- name: Run common node bootstrap script with failure log tail
+  block:
+    - name: Run common node bootstrap script
+      shell: |
+        set -Eeuo pipefail
+        bash /root/kube-common-bootstrap.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log
+      args:
+        executable: /bin/bash
+  rescue:
+    - name: Read common bootstrap log tail after failure
+      shell: tail -n 120 {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log
+      register: __common_bootstrap_log_tail
+      failed_when: false
+      args:
+        executable: /bin/bash
+    - name: Show common bootstrap log tail
+      debug:
+        var: __common_bootstrap_log_tail.stdout_lines
+    - name: Fail common bootstrap with log path
+      fail:
+        msg: "common-bootstrap.sh failed. See {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log"
   when:
     - "'common' in k8s_install_services"
     - common_bootstrap_enabled | default(false) | bool

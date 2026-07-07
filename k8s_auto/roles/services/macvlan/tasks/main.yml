@@ -1,0 +1,23 @@
+---
+- name: Render macvlan NetworkAttachmentDefinitions on bootstrap master
+  loop: "{{ macvlan_init }}"
+  template:
+    src: "{{ item }}"
+    dest: "{{ __bootstrap_dir }}/{{ item | replace('.j2','') }}"
+  when:
+    - "'macvlan' in k8s_install_services"
+    - multi_network | bool
+    - multus_macvlan | bool
+    - inventory_hostname == groups['master'][0]
+
+- name: Apply macvlan NetworkAttachmentDefinitions
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/whereabouts-nad-macvlan.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'macvlan' in k8s_install_services"
+    - multi_network | bool
+    - multus_macvlan | bool
+    - inventory_hostname == groups['master'][0]

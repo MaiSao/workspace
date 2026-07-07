@@ -1,116 +1,49 @@
 ---
 #---------------------------------------------------
-# Dynamic install service catalog
+# Service-specific configuration
 #---------------------------------------------------
-# Default behavior runs the full current install flow. Operators usually edit
-# only k8s_default_services or add-on manifest lists.
-#
-# Full install:
-#   ansible-playbook -i inventory.ini site.yml
-#
-# Run only selected built-in phases:
-#   ansible-playbook -i inventory.ini site.yml \
-#     -e 'k8s_install_services=["cni","addons","exporters","k8s_resources"]'
-#---------------------------------------------------
+# The install plan lives at the top of group_vars/all.yml so operators can see
+# what will run before editing details. This file keeps per-service manifest
+# lists, add-on switches, exporter settings, and extra-service configuration.
 
-# Built-in install phases. This list controls which phases are enabled; site.yml
-# controls the execution order. Keep it aligned with the playbook order.
-k8s_default_services:
-  - common                 # OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap config
-  - containerd             # container runtime package/config/service
-  - k8s_ha                 # HAProxy, Keepalived, API VIP on master nodes
-  - kubeadm_prepare        # audit policy and kubeadm config rendering
-  - kubeadm_control_plane  # kubeadm init and join command generation on master[0]
-  - kubeconfig             # admin kubeconfig for configured master users
-  - cni                    # Calico, CoreDNS, optional Multus/Whereabouts/SR-IOV
-  - kubeadm_join           # join non-bootstrap masters and workers
-  - addons                 # etcd jobs, metrics-server, kube-state-metrics, kubelet CSR approver, Kyverno
-  - k8s_resources          # kubectl resource updates for kubeadm-created workloads
-  - k8s_patch              # static pod resources and arguments
-
-# Optional built-in services can be appended here later without editing the
-# default list. Currently empty because all built-in phases above run by default.
-k8s_enabled_optional_services: []
-
-# Effective built-in service list used by site.yml roles.
-k8s_install_services: "{{ k8s_default_services + k8s_enabled_optional_services }}"
-
-#---------------------------------------------------
-# Human-readable service catalog
-#---------------------------------------------------
-# This catalog documents the built-in phases. It is not the execution loop for
-# site.yml; the playbook roles are explicit so install order is easy to audit.
-k8s_service_catalog:
-  - name: common
-    role: common
-    phase: base
-    required: true
-    description: OS prep, repositories, packages, kernel modules, sysctl, host file setup, and kubelet bootstrap config.
-  - name: containerd
-    role: containerd
-    phase: base
-    required: true
-    description: Containerd package, registry hosts config, crictl config, and containerd service start.
-  - name: k8s_ha
-    role: k8s_ha
-    phase: base
-    required: true
-    description: HAProxy, Keepalived, API VIP, and API health check script on master nodes.
-  - name: kubeadm_prepare
-    role: kubeadm_prepare
-    phase: cluster
-    required: true
-    description: Audit policy and kubeadm config rendering.
-  - name: kubeadm_control_plane
-    role: kubeadm_control_plane
-    phase: cluster
-    required: true
-    description: Image pull check, kubeadm init, and join command generation.
-  - name: kubeconfig
-    role: kubeconfig
-    phase: cluster
-    required: true
-    description: Copy admin kubeconfig for configured master users.
-  - name: kubeadm_join
-    role: kubeadm_join
-    phase: cluster
-    required: true
-    description: Join non-bootstrap masters and workers.
-  - name: cni
-    role: services/k8s_cni
-    phase: network
-    required: true
-    description: Calico, optional Multus/Whereabouts/SR-IOV, and CoreDNS rollout.
-  - name: addons
-    role: services/k8s_addons
-    phase: addons
-    required: false
-    description: etcd jobs, metrics-server, kube-state-metrics, kubelet CSR approver, and Kyverno policies.
-  - name: exporters
-    role: services/k8s_exporters
-    phase: addons
-    required: false
-    description: Optional cert, IP pool, SNMP, and SNMP switch exporters.
-  - name: k8s_resources
-    role: k8s_resources
-    phase: patch
-    required: false
-    description: Resource requests and limits for kubeadm-created workloads such as CoreDNS and kube-proxy.
-  - name: k8s_patch
-    role: k8s_patch
-    phase: patch
-    required: false
-    description: Patch control-plane static pod resources and arguments.
+k8s_service_roles:
+  common: common
+  containerd: containerd
+  haproxy: haproxy
+  keepalived: keepalived
+  kubeadm: kubeadm
+  calico: services/calico
+  multus: services/multus
+  whereabouts: services/whereabouts
+  sriov: services/sriov
+  macvlan: services/macvlan
+  coredns: services/coredns
+  metrics_server: services/metrics_server
+  kube_state_metrics: services/kube_state_metrics
+  kubelet_csr_approver: services/kubelet_csr_approver
+  kyverno: services/kyverno
+  etcd_jobs: services/etcd_jobs
+  cert_exporter: services/cert_exporter
+  ip_pools_exporter: services/ip_pools_exporter
+  snmp_exporter: services/snmp_exporter
+  snmp_switch_exporter: services/snmp_switch_exporter
+  haproxy_exporter: services/haproxy_exporter
+  keepalived_exporter: services/keepalived_exporter
+  k8s_tuning: k8s_tuning
 
 #---------------------------------------------------
 # Manifest template lists
 #---------------------------------------------------
 # File names must exist under the owning role's templates/ directory.
-# kubeadm_init: roles/kubeadm_prepare/templates/
-# calico_init, coredns_init, multus_init, macvlan_init, sriov_init:
-#   roles/services/k8s_cni/templates/
-# etcd_operation, add_on_self:
-#   roles/services/k8s_addons/templates/
+# kubeadm_init: roles/kubeadm/templates/
+# calico_init: roles/services/calico/templates/
+# coredns_init: roles/services/coredns/templates/
+# multus_init: roles/services/multus/templates/
+# whereabouts_init: roles/services/whereabouts/templates/
+# macvlan_init: roles/services/macvlan/templates/
+# sriov_init: roles/services/sriov/templates/
+# etcd_operation: roles/services/etcd_jobs/templates/
+# kyverno_init: roles/services/kyverno/templates/
 #---------------------------------------------------
 
 # kubeadm bootstrap configuration rendered before kubeadm init.
@@ -125,14 +58,17 @@ calico_init:
 coredns_init:
   - coredns.yaml.j2
 
-# etcd operational CronJobs rendered by services/k8s_addons.
+# etcd operational CronJobs rendered by services/etcd_jobs.
 etcd_operation:
   - etcd-backup-rotate-cronjob.yaml.j2
   - etcd-defrag.yaml.j2
 
-# Multus and Whereabouts manifests rendered when multi_network: true.
+# Multus manifests rendered when multi_network: true.
 multus_init:
   - multus-daemonset_v4.1.3.yaml.j2
+
+# Whereabouts manifests rendered when multi_network: true.
+whereabouts_init:
   - whereabouts_daemonset_install.yaml.j2
   - whereabouts_ippools-cleaner.yaml.j2
   - whereabouts_ippools.yaml.j2
@@ -222,81 +158,45 @@ sriov_bond_networks:
   - { name: media-ext-net, group: ext, range_start: 10.57.218.73, range_end: 10.57.218.77 }
   - { name: db-net, group: db }
 
-# Additional cluster add-ons rendered by services/k8s_addons.
-add_on_self:
-  - kube-state-metrics.yaml.j2
-  - metric-server-v0.8.0.yaml.j2
-  - kubelet-csr-approver.yaml.j2
+# Kyverno manifests rendered by services/kyverno.
+kyverno_init:
   - kyverno-v1.14.4.yaml.j2
   - kyverno-block-specific-nodeports.yaml.j2
   - kyverno-require-run-as-nonroot.yaml.j2
   - kyverno-pod-resources-request-limit-block.yaml.j2
 
 #---------------------------------------------------
-# Exporter service switches
+# Exporter service configuration
 #---------------------------------------------------
-# The exporters role runs only when "exporters" is in k8s_install_services.
-# cert and snmp_switch are scheduled on master/control-plane nodes. ip_pools is
-# also gated by multus_sriov: true because it reports SR-IOV IP pool state.
-k8s_exporters:
-  cert:
-    enabled: true
-  ip_pools:
-    enabled: false
-  snmp:
-    enabled: true
-  snmp_switch:
-    enabled: true
-  haproxy:
-    enabled: true
-    package_name: haproxy_exporter
-    binary_path: /usr/local/bin/haproxy_exporter
-    listen_address: ":9101"
-    scrape_uri: unix:/var/lib/haproxy/stats
-    extra_args: ""
-  keepalived:
-    enabled: true
-    package_name: keepalived_exporter
-    binary_path: /usr/local/bin/keepalived_exporter
-    listen_address: ":9165"
-    extra_args: ""
+# Exporters are split into service-level roles and enabled from
+# k8s_service_groups in group_vars/all.yml. IP pools exporter also requires
+# multus_sriov: true because it reports SR-IOV IP pool state.
+haproxy_exporter:
+  package_name: haproxy_exporter
+  binary_path: /usr/local/bin/haproxy_exporter
+  listen_address: ":9101"
+  scrape_uri: unix:/var/lib/haproxy/stats
+  extra_args: ""
+
+keepalived_exporter:
+  package_name: keepalived_exporter
+  binary_path: /usr/local/bin/keepalived_exporter
+  listen_address: ":9165"
+  extra_args: ""
 
 exporter_images: >-
   {{
-    ([] if not (k8s_exporters.cert.enabled | default(false) | bool) else [cert_exporter_image])
-    + ([] if not ((k8s_exporters.ip_pools.enabled | default(false) | bool) and (multus_sriov | default(false) | bool)) else [ip_pools_exporter_image])
-    + ([] if not (k8s_exporters.snmp.enabled | default(false) | bool) else [snmp_exporter_image])
-    + ([] if not (k8s_exporters.snmp_switch.enabled | default(false) | bool) else [snmp_switch_exporter_image])
+    ([] if 'cert_exporter' not in k8s_install_services else [cert_exporter_image])
+    + ([] if not (('ip_pools_exporter' in k8s_install_services) and (multus_sriov | default(false) | bool)) else [ip_pools_exporter_image])
+    + ([] if 'snmp_exporter' not in k8s_install_services else [snmp_exporter_image])
+    + ([] if 'snmp_switch_exporter' not in k8s_install_services else [snmp_switch_exporter_image])
   }}
-
-#---------------------------------------------------
-# Future extra service roles
-#---------------------------------------------------
-# This list is consumed by extra-services.yml. Add entries here after creating a
-# role under roles/services/. Set enabled: false to keep a service registered but
-# skip installation.
-#
-# Run extra services:
-#   ansible-playbook -i inventory.ini extra-services.yml
-# Elasticsearch volumes use Rancher Local Path Provisioner. Keep
-# local_path_provisioner enabled and listed before elasticsearch.
-k8s_enabled_extra_services:
-  - name: fluentbit
-    role: services/fluentbit
-    enabled: true
-  - name: local_path_provisioner
-    role: services/local_path_provisioner
-    enabled: true
-  - name: elasticsearch
-    role: services/elasticsearch
-    enabled: true
-    depends_on:
-      - local_path_provisioner
 
 #---------------------------------------------------
 # Elasticsearch extra service
 #---------------------------------------------------
-# Elasticsearch is installed by extra-services.yml. Values below preserve the
+# Elasticsearch is installed by the extra service loop at the end of site.yml.
+# Values below preserve the
 # reference deployment under k8s_extends/elasticsearchv8.19 while splitting
 # elasticsearch.yml by node type for easier maintenance. Its StorageClasses use
 # local_path_provisioner_name, so the Local Path Provisioner extra service must
@@ -422,7 +322,8 @@ elasticsearch_node_sets:
 #---------------------------------------------------
 # Local Path Provisioner extra service
 #---------------------------------------------------
-# Rancher Local Path Provisioner is installed by extra-services.yml. The
+# Rancher Local Path Provisioner is installed by the extra service loop at the
+# end of site.yml. The
 # template follows upstream v0.0.36 and exposes only the deployment knobs below.
 local_path_namespace: local-path-storage
 local_path_storage_class_name: local-path
@@ -435,7 +336,7 @@ local_path_make_default_storage_class: false
 #---------------------------------------------------
 # Fluent Bit extra service
 #---------------------------------------------------
-# Fluent Bit is installed by extra-services.yml. Its native .conf files live in
+# Fluent Bit is installed by the extra service loop at the end of site.yml. Its native .conf files live in
 # roles/services/fluentbit/templates/conf/ and are lightly templated with these
 # deployment values and profile switches.
 fluentbit_namespace: fluentbit

@@ -1,0 +1,28 @@
+---
+- name: Prepare Kubernetes audit policy path on control-plane nodes
+  shell: |
+    set -Eeuo pipefail
+    rm -rf /etc/kubernetes/audit-policy.yaml
+    mkdir -p /etc/kubernetes
+  args:
+    executable: /bin/bash
+  when: >
+    'kubeadm' in k8s_install_services
+    and 'master' in group_names
+
+- name: Render Kubernetes audit policy manifest
+  template:
+    src: audit-policy.yaml.j2
+    dest: /etc/kubernetes/audit-policy.yaml
+  when: >
+    'kubeadm' in k8s_install_services
+    and 'master' in group_names
+
+- name: Render kubeadm configuration files on bootstrap master
+  loop: "{{ kubeadm_init }}"
+  template:
+    src: "{{ item }}"
+    dest: "/root/kubebootstrap/{{ item | replace('.j2','') }}"
+  when: >
+    'kubeadm' in k8s_install_services
+    and inventory_hostname == groups['master'][0]

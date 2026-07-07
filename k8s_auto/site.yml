@@ -7,30 +7,30 @@
     - group_vars/images.yml
     - group_vars/services.yml
     - group_vars/resources.yml
-  roles:
-    - role: common
-      vars:
-        common_bootstrap_enabled: true
-      tags: common
-    - role: containerd
-      tags: containerd
-    - role: k8s_ha
-      tags: k8s_ha
-    - role: kubeadm_prepare
-      tags: kubeadm_prepare
-    - role: kubeadm_control_plane
-      tags: kubeadm_control_plane
-    - role: kubeconfig
-      tags: kubeconfig
-    - role: services/k8s_cni
-      tags: cni
-    - role: kubeadm_join
-      tags: kubeadm_join
-    - role: services/k8s_addons
-      tags: addons
-    - role: services/k8s_exporters
-      tags: exporters
-    - role: k8s_resources
-      tags: k8s_resources
-    - role: k8s_patch
-      tags: k8s_patch
+  tasks:
+    - name: Validate enabled Kubernetes services have role mappings
+      assert:
+        that:
+          - (k8s_install_services | difference(k8s_service_roles.keys() | list)) | length == 0
+        fail_msg: "Missing role mapping for enabled services: {{ k8s_install_services | difference(k8s_service_roles.keys() | list) }}"
+        success_msg: "All enabled Kubernetes services have role mappings."
+      tags: always
+
+    - name: Run enabled Kubernetes services
+      include_role:
+        name: "{{ k8s_service_roles[item] }}"
+      loop: "{{ k8s_install_services }}"
+      loop_control:
+        label: "{{ item }}"
+      tags: always
+
+    - name: Install enabled extra service roles
+      include_role:
+        name: "{{ item.role }}"
+      loop: "{{ k8s_enabled_extra_services }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - inventory_hostname == groups['master'][0]
+        - item.enabled | default(true) | bool
+      tags: extra_services

@@ -1,4 +1,137 @@
 #---------------------------------------------------
+# Install plan - service enable catalog
+#---------------------------------------------------
+# Open this section first before every install. It shows every supported built-in
+# service grouped by purpose. Toggle enabled: true/false to choose what runs.
+#
+# Full cluster install:
+#   ansible-playbook -i inventory.ini site.yml
+#
+# Extra services run at the end of site.yml when enabled below.
+#---------------------------------------------------
+
+common_bootstrap_enabled: true
+
+k8s_service_groups:
+  base:
+    - name: common
+      enabled: true
+      description: OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap config, and etcd client tools.
+    - name: containerd
+      enabled: true
+      description: Container runtime package, registry config, crictl config, and service start.
+
+  ha:
+    - name: haproxy
+      enabled: true
+      description: Kubernetes API load balancer on master nodes.
+    - name: keepalived
+      enabled: true
+      requires: [haproxy]
+      description: Kubernetes API VIP and health check on master nodes.
+
+  cluster:
+    - name: kubeadm
+      enabled: true
+      requires: [common, containerd, haproxy, keepalived]
+      description: Audit policy, kubeadm config, init, kubeconfig, join command generation, and node join.
+
+  network:
+    - name: calico
+      enabled: true
+      description: Primary CNI when cni_prime is calico.
+    - name: multus
+      enabled: true
+      description: Multi-network CNI.
+    - name: whereabouts
+      enabled: true
+      requires: [multus]
+      description: IPAM for secondary networks.
+    - name: sriov
+      enabled: false
+      requires: [multus, whereabouts]
+      description: SR-IOV device plugin and SR-IOV NetworkAttachmentDefinitions.
+    - name: macvlan
+      enabled: false
+      requires: [multus, whereabouts]
+      description: macvlan NetworkAttachmentDefinitions.
+    - name: coredns
+      enabled: true
+      description: CoreDNS override manifest and rollout restart.
+
+  addons:
+    - name: metrics_server
+      enabled: true
+      description: Kubernetes metrics-server.
+    - name: kube_state_metrics
+      enabled: true
+      description: kube-state-metrics.
+    - name: kubelet_csr_approver
+      enabled: true
+      description: kubelet serving certificate approver.
+    - name: kyverno
+      enabled: true
+      description: Kyverno admission controller and baseline policies.
+    - name: etcd_jobs
+      enabled: true
+      description: etcd backup rotation and defrag jobs.
+
+  observability:
+    - name: cert_exporter
+      enabled: true
+      description: Certificate expiration exporter.
+    - name: snmp_exporter
+      enabled: true
+      description: Installs snmpd host config and deploys SNMP exporter.
+    - name: snmp_switch_exporter
+      enabled: true
+      description: SNMP switch exporter scheduled on master nodes.
+    - name: haproxy_exporter
+      enabled: true
+      requires: [haproxy]
+      description: HAProxy host-service exporter on master nodes.
+    - name: keepalived_exporter
+      enabled: true
+      requires: [keepalived]
+      description: Keepalived host-service exporter on master nodes.
+    - name: ip_pools_exporter
+      enabled: false
+      requires: [sriov]
+      description: SR-IOV IP pools exporter.
+
+  tuning:
+    - name: k8s_tuning
+      enabled: true
+      description: Resource tuning for kubeadm-created workloads and static pod manifest patching.
+
+k8s_install_services: >-
+  {{
+    k8s_service_groups
+    | dict2items
+    | map(attribute='value')
+    | flatten
+    | selectattr('enabled', 'equalto', true)
+    | map(attribute='name')
+    | list
+  }}
+
+# Extra services run at the end of site.yml on the bootstrap master when
+# enabled. Keep local_path_provisioner before elasticsearch because
+# Elasticsearch PVCs depend on it.
+k8s_enabled_extra_services:
+  - name: fluentbit
+    role: services/fluentbit
+    enabled: true
+  - name: local_path_provisioner
+    role: services/local_path_provisioner
+    enabled: true
+  - name: elasticsearch
+    role: services/elasticsearch
+    enabled: true
+    depends_on:
+      - local_path_provisioner
+
+#---------------------------------------------------
 # Kubernetes version and kubeadm defaults
 #---------------------------------------------------
 # Kubernetes version to install. Keep the leading "v" because image tags and

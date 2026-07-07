@@ -1,0 +1,10 @@
+---
+- name: Apply workload resource tuning
+  include_tasks: workload_resources.yml
+  when: "'k8s_tuning' in k8s_install_services"
+  tags: tuning
+
+- name: Apply static pod tuning
+  include_tasks: static_pod_patch.yml
+  when: "'k8s_tuning' in k8s_install_services"
+  tags: tuning

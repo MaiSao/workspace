@@ -1,0 +1,25 @@
+---
+- name: Render Kyverno manifests on bootstrap master
+  loop: "{{ kyverno_init }}"
+  template:
+    src: "{{ item }}"
+    dest: "{{ __bootstrap_dir }}/{{ item | replace('.j2','') }}"
+  when:
+    - "'kyverno' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+
+- name: Apply Kyverno and policies
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/kyverno-v1.14.4.yaml
+    kubectl wait --for=condition=established crd/clusterpolicies.kyverno.io --timeout=120s
+    kubectl wait --for=condition=available deployment -n kyverno --all --timeout=300s
+    kubectl apply \
+      -f {{ __bootstrap_dir }}/kyverno-block-specific-nodeports.yaml \
+      -f {{ __bootstrap_dir }}/kyverno-require-run-as-nonroot.yaml \
+      -f {{ __bootstrap_dir }}/kyverno-pod-resources-request-limit-block.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'kyverno' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]

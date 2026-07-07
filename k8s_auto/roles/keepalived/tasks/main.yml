@@ -1,0 +1,35 @@
+---
+- name: Install Keepalived package on master nodes
+  package:
+    name: keepalived
+    state: present
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Render Keepalived VRRP configuration
+  template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    mode: '0644'
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Render Keepalived Kubernetes API health check
+  template:
+    src: check_apiserver.sh.j2
+    dest: /etc/keepalived/check_apiserver.sh
+    mode: '0755'
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Start Keepalived VIP service
+  systemd:
+    name: keepalived
+    state: restarted
+    enabled: true
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'master' in group_names"

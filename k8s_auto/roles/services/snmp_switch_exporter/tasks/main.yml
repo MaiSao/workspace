@@ -1,0 +1,18 @@
+---
+- name: Render SNMP switch exporter manifest on bootstrap master
+  template:
+    src: snmp-switch-exporter.yaml.j2
+    dest: "{{ __bootstrap_dir }}/snmp-switch-exporter.yaml"
+  when:
+    - "'snmp_switch_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+
+- name: Apply SNMP switch exporter
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/snmp-switch-exporter.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'snmp_switch_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]

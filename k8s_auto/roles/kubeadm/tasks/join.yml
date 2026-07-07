@@ -1,0 +1,86 @@
+---
+- name: Render kubelet CSR approver before joining additional nodes
+  template:
+    src: "{{ playbook_dir }}/roles/services/kubelet_csr_approver/templates/kubelet-csr-approver.yaml.j2"
+    dest: "{{ __bootstrap_dir }}/kubelet-csr-approver.yaml"
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - kubelet_serverTLSBootstrap | default(false) | bool
+
+- name: Apply kubelet CSR approver before joining additional nodes
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/kubelet-csr-approver.yaml
+    kubectl -n kube-system rollout status deployment/kubelet-csr-approver --timeout=180s
+  args:
+    executable: /bin/bash
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - kubelet_serverTLSBootstrap | default(false) | bool
+
+- name: Join remaining control-plane and worker nodes to cluster with failure log tail
+  block:
+    - name: Join remaining control-plane and worker nodes to cluster
+      shell: |
+        set -Eeuo pipefail
+        cat > /root/join-cluster.sh <<'EOF'
+        set -Eeuo pipefail
+        log() { echo "[$(date '+%F %T')] $*"; }
+        fail() {
+            local rc=$?
+            local line="${BASH_LINENO[0]:-${LINENO}}"
+            echo "[ERROR] ${BASH_SOURCE[1]:-${BASH_SOURCE[0]}} failed at line ${line}: ${BASH_COMMAND} rc=${rc}" >&2
+            exit "$rc"
+        }
+        trap fail ERR
+        log "Starting kubeadm join"
+        if [[ -f /etc/kube-master-metadata ]]; then
+          {{ hostvars[groups['master'][0]].control_join }} --apiserver-advertise-address {{ k8s_ip }}
+        else
+          {{ hostvars[groups['master'][0]].worker_join }}
+        fi
+        log "Completed kubeadm join"
+        EOF
+        bash /root/join-cluster.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+      args:
+        executable: /bin/bash
+  rescue:
+    - name: Read kubeadm join log tail after failure
+      shell: tail -n 120 {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+      register: __join_cluster_log_tail
+      failed_when: false
+      args:
+        executable: /bin/bash
+    - name: Show kubeadm join log tail
+      debug:
+        var: __join_cluster_log_tail.stdout_lines
+    - name: Fail kubeadm join with log path
+      fail:
+        msg: "join-cluster.sh failed. See {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log"
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname != groups['master'][0]
+
+- name: Wait for kubelet serving CSRs to be approved
+  shell: |
+    set -Eeuo pipefail
+    for _ in $(seq 1 30); do
+      pending_csrs="$(kubectl get csr --no-headers 2>/dev/null | awk '$3=="kubernetes.io/kubelet-serving" && $6=="Pending" {print $1}' || true)"
+      if [[ -z "$pending_csrs" ]]; then
+        kubectl get csr || true
+        exit 0
+      fi
+      echo "Waiting for kubelet serving CSRs to be approved: $pending_csrs"
+      sleep 10
+    done
+    echo "[ERROR] kubelet serving CSRs are still pending after timeout" >&2
+    kubectl get csr >&2 || true
+    exit 1
+  args:
+    executable: /bin/bash
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - kubelet_serverTLSBootstrap | default(false) | bool

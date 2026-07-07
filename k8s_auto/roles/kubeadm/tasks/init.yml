@@ -1,0 +1,148 @@
+---
+- name: Pull required Kubernetes images before kubeadm init
+  loop: "{{ container_images }}"
+  shell: |
+    set -Eeuo pipefail
+    crictl pull {{ __registry_prefix }}/{{ item }}
+  args:
+    executable: /bin/bash
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'kubeadm' in k8s_install_services"
+
+- name: Initialize first Kubernetes control-plane node with failure log tail
+  block:
+    - name: Initialize first Kubernetes control-plane node
+      register: __init_cluster
+      shell: |
+        set -Eeuo pipefail
+        cat > /root/init-k8s.sh <<'EOF'
+        set -Eeuo pipefail
+        log() { echo "[$(date '+%F %T')] $*"; }
+        fail() {
+            local rc=$?
+            local line="${BASH_LINENO[0]:-${LINENO}}"
+            echo "[ERROR] ${BASH_SOURCE[1]:-${BASH_SOURCE[0]}} failed at line ${line}: ${BASH_COMMAND} rc=${rc}" >&2
+            exit "$rc"
+        }
+        trap fail ERR
+        log "Starting kubeadm init"
+        KUBEADMF=/root/kubeadm.yaml
+        kubeadm config migrate --old-config {{ __bootstrap_dir }}/kubeadm-config.yaml --new-config $KUBEADMF
+        sed -i 's/controlPlaneComponentHealthCheck.*/controlPlaneComponentHealthCheck: 30s/g' $KUBEADMF
+        echo '---' >> $KUBEADMF
+        awk '/apiVersion: kubelet.config.k8s.io\/v1beta1/{flag=1} flag && /^---/ {exit} flag' {{ __bootstrap_dir }}/kubeadm-config.yaml >> $KUBEADMF
+        echo '---' >> $KUBEADMF
+        awk '/apiVersion: kubeproxy.config.k8s.io\/v1alpha1/{flag=1} flag && /^---/ {exit} flag' {{ __bootstrap_dir }}/kubeadm-config.yaml >> $KUBEADMF
+        kubeadm init --upload-certs --config $KUBEADMF
+        log "Completed kubeadm init"
+        EOF
+        bash /root/init-k8s.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log
+      args:
+        executable: /bin/bash
+  rescue:
+    - name: Read kubeadm init log tail after failure
+      shell: tail -n 120 {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log
+      register: __init_cluster_log_tail
+      failed_when: false
+      args:
+        executable: /bin/bash
+    - name: Show kubeadm init log tail
+      debug:
+        var: __init_cluster_log_tail.stdout_lines
+    - name: Fail kubeadm init with log path
+      fail:
+        msg: "init-k8s.sh failed. See {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - "'kubeadm' in k8s_install_services"
+
+- tags: ["debug"]
+  debug:
+    var: __init_cluster.stdout_lines
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - __init_cluster is defined
+
+- name: Generate kubeadm worker join command
+  register: __join_command
+  shell: kubeadm token create --print-join-command
+  args:
+    executable: /bin/bash
+  when: >
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm' in k8s_install_services
+    )
+
+- name: Upload control-plane certificates and capture certificate key
+  register: __cert_key
+  shell: kubeadm init phase upload-certs --upload-certs
+  args:
+    executable: /bin/bash
+  when: >
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm' in k8s_install_services
+    )
+
+- name: Build kubeadm join commands for control-plane and worker nodes
+  set_fact:
+    control_join: |
+      {{ __join_command.stdout }} --control-plane --certificate-key {{ __cert_key.stdout_lines[2] }}
+    worker_join: |
+      {{ __join_command.stdout }}
+  when: >
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm' in k8s_install_services
+    )
+
+- tags: ["debug"]
+  debug:
+    msg: |
+      {{ control_join }}
+      {{ worker_join }}
+  when: >
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm' in k8s_install_services
+    )
+
+- name: Install helper script to regenerate kubeadm join commands
+  shell: |
+    set -Eeuo pipefail
+    cat > /root/regen_join_command.sh <<'EOF'
+    set -Eeuo pipefail
+    log() { echo "[$(date '+%F %T')] $*"; }
+    fail() {
+        local rc=$?
+        local line="${BASH_LINENO[0]:-${LINENO}}"
+        echo "[ERROR] ${BASH_SOURCE[1]:-${BASH_SOURCE[0]}} failed at line ${line}: ${BASH_COMMAND} rc=${rc}" >&2
+        exit "$rc"
+    }
+    trap fail ERR
+    log "Regenerating kubeadm join commands"
+    ISC=$(kubectl get node $(echo $(hostname) | tr '[:upper:]' '[:lower:]') --show-labels | grep control-plane)
+    if [[ -z "$ISC" ]]; then
+          echo must run on a control/master node. Cannot run in a normal client.
+          exit 1
+    fi
+    WJOIN=$(kubeadm token create --print-join-command)
+    CERT_UPLOAD=$(kubeadm init phase upload-certs --upload-certs | awk 'NR==3')
+    CJOIN="$WJOIN --control-plane --certificate-key $CERT_UPLOAD --apiserver-advertise-address $(cat /etc/sysconfig/kubeip)"
+    cat <<EOM
+    - Worker join command:
+      $WJOIN
+    - Control join command:
+      $CJOIN
+    EOM
+    EOF
+  args:
+    executable: /bin/bash
+  when: >
+    inventory_hostname == groups['master'][0]
+    and (
+      'kubeadm' in k8s_install_services
+    )

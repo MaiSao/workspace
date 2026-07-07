@@ -2,10 +2,10 @@
 #---------------------------------------------------
 # Kubernetes workload resource sizing
 #---------------------------------------------------
-# Static pod values are applied by roles/k8s_patch by editing files under
+# Static pod values are applied by roles/k8s_tuning by editing files under
 # /etc/kubernetes/manifests/. Add-on and CNI values are rendered directly into
 # their manifest templates before kubectl apply. Kubeadm-created workloads such
-# as CoreDNS and kube-proxy are updated by roles/k8s_resources with kubectl.
+# as CoreDNS and kube-proxy are updated by roles/k8s_tuning with kubectl.
 #---------------------------------------------------
 
 k8s_resources:

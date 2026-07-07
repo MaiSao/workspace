@@ -1,0 +1,27 @@
+---
+- name: Install Keepalived exporter package on master nodes
+  package:
+    name: "{{ keepalived_exporter.package_name }}"
+    state: present
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Install Keepalived exporter systemd unit on master nodes
+  template:
+    src: keepalived-exporter.service.j2
+    dest: /etc/systemd/system/keepalived-exporter.service
+    mode: '0644'
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Start Keepalived exporter host service on master nodes
+  systemd:
+    name: keepalived-exporter
+    state: restarted
+    enabled: true
+    daemon_reload: true
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - "'master' in group_names"

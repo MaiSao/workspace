@@ -1,0 +1,8 @@
+---
+- name: Patch Kubernetes static pod resources and arguments
+  include_tasks: update_static_pod.yml
+  loop: "{{ k8s_static_pod_patches }}"
+  when:
+    - "'master' in group_names"
+    - "'k8s_tuning' in k8s_install_services"
+  tags: tuning

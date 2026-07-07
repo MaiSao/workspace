@@ -1,7 +1,15 @@
 #!/bin/env bash
 set -Eeuo pipefail
-trap 'echo "[ERROR] common-bootstrap.sh failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
+log() { echo "[$(date '+%F %T')] $*"; }
+fail() {
+    local rc=$?
+    local line="${BASH_LINENO[0]:-${LINENO}}"
+    echo "[ERROR] ${BASH_SOURCE[1]:-${BASH_SOURCE[0]}} failed at line ${line}: ${BASH_COMMAND} rc=${rc}" >&2
+    exit "$rc"
+}
+trap fail ERR
 
+log "Starting common bootstrap"
 (command -v kubeadm  && kubeadm reset -f) || echo "Host seems to be fresh. Skipping kubeadm reset..."
 
 rm -rf /etc/kube-master-metadata
@@ -47,23 +55,11 @@ gpgcheck=0
 enabled=1
 baseurl=http://repository:$REPO_PORT/rhel89/AppStream/
 
-# [rhel10]
-# name=rhel10
-# gpgcheck=0
-# enabled=1
-# baseurl=http://repository:$REPO_PORT/rhel10/BaseOS
-
 [epel8]
 name=epel8
 gpgcheck=0
 enabled=1
 baseurl=http://repository:$REPO_PORT/epel8
-
-# [codeready]
-# name=codeready
-# gpgcheck=0
-# enabled=1
-# baseurl=http://repository:$REPO_PORT/codeready/
 
 [docker-ce]
 name=docker-ce
@@ -76,12 +72,6 @@ name=Kubernetes
 baseurl=http://repository:$REPO_PORT/k8s-rh8
 enabled=1
 gpgcheck=0
-
-# [containerd]
-# name=containerd
-# baseurl=http://repository:$REPO_PORT/docker8
-# enabled=1
-# gpgcheck=0
 EOF
 
 swapoff -a
@@ -165,3 +155,5 @@ cat > /etc/NetworkManager/conf.d/calico.conf <<'EOF'
 unmanaged-devices=interface-name:cali*;interface-name:tunl*;interface-name:vxlan.calico;interface-name:vxlan-v6.calico;interface-name:wireguard.cali;interface-name:wg-v6.cali"
 EOF
 {% endif %}
+
+log "Completed common bootstrap"
