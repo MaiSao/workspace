@@ -57,14 +57,6 @@
     - inventory_hostname == groups['master'][0]
     - "'kubeadm' in k8s_install_services"
 
-- tags: ["debug"]
-  debug:
-    var: __init_cluster.stdout_lines
-  when:
-    - "'kubeadm' in k8s_install_services"
-    - inventory_hostname == groups['master'][0]
-    - __init_cluster is defined
-
 - name: Generate kubeadm worker join command
   register: __join_command
   shell: kubeadm token create --print-join-command
@@ -99,16 +91,20 @@
       'kubeadm' in k8s_install_services
     )
 
-- tags: ["debug"]
-  debug:
-    msg: |
-      {{ control_join }}
-      {{ worker_join }}
+- name: Publish kubeadm join commands to all inventory hosts
+  loop: "{{ groups['all'] }}"
+  set_fact:
+    control_join: "{{ hostvars[groups['master'][0]].control_join | trim }}"
+    worker_join: "{{ hostvars[groups['master'][0]].worker_join | trim }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
   when: >
     inventory_hostname == groups['master'][0]
     and (
       'kubeadm' in k8s_install_services
     )
+    and hostvars[groups['master'][0]].control_join is defined
+    and hostvars[groups['master'][0]].worker_join is defined
 
 - name: Install helper script to regenerate kubeadm join commands
   shell: |

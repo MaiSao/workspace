@@ -15,10 +15,23 @@
     kubectl -n kube-system rollout status deployment/kubelet-csr-approver --timeout=180s
   args:
     executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   when:
     - "'kubeadm' in k8s_install_services"
     - inventory_hostname == groups['master'][0]
     - kubelet_serverTLSBootstrap | default(false) | bool
+
+- name: Validate kubeadm join commands are available on join nodes
+  assert:
+    that:
+      - control_join is defined
+      - worker_join is defined
+    fail_msg: "kubeadm join commands are missing on {{ inventory_hostname }}. Check that kubeadm init generated and published control_join/worker_join on {{ groups['master'][0] }}."
+    success_msg: "kubeadm join commands are available on {{ inventory_hostname }}."
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname != groups['master'][0]
 
 - name: Join remaining control-plane and worker nodes to cluster with failure log tail
   block:
@@ -37,9 +50,9 @@
         trap fail ERR
         log "Starting kubeadm join"
         if [[ -f /etc/kube-master-metadata ]]; then
-          {{ hostvars[groups['master'][0]].control_join }} --apiserver-advertise-address {{ k8s_ip }}
+          {{ control_join }} --apiserver-advertise-address {{ k8s_ip }}
         else
-          {{ hostvars[groups['master'][0]].worker_join }}
+          {{ worker_join }}
         fi
         log "Completed kubeadm join"
         EOF
@@ -80,6 +93,8 @@
     exit 1
   args:
     executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   when:
     - "'kubeadm' in k8s_install_services"
     - inventory_hostname == groups['master'][0]

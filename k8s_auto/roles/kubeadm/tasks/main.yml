@@ -7,6 +7,24 @@
   include_tasks: init.yml
   when: "'kubeadm' in k8s_install_services"
 
+- name: Prepare bootstrap master kubeconfig for kubectl tasks
+  block:
+    - name: Create root kubeconfig directory on bootstrap master
+      file:
+        path: /root/.kube
+        state: directory
+        mode: "0700"
+
+    - name: Install root kubeconfig on bootstrap master
+      copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: true
+        mode: "0600"
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+
 - name: Join additional Kubernetes nodes
   include_tasks: join.yml
   when: "'kubeadm' in k8s_install_services"

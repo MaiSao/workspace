@@ -18,6 +18,18 @@
     - "'haproxy' in k8s_install_services"
     - "'master' in group_names"
 
+- name: Remove stale HAProxy Kubernetes API config fragments
+  loop:
+    - kubernetes.cfg
+    - apiserver.cfg
+    - kube-apiserver.cfg
+  file:
+    path: "/etc/haproxy/conf.d/{{ item }}"
+    state: absent
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'master' in group_names"
+
 - name: Render HAProxy Kubernetes API load balancer config
   template:
     src: haproxy.cfg.j2
@@ -30,7 +42,11 @@
 - name: Validate HAProxy configuration
   shell: |
     set -Eeuo pipefail
-    haproxy -c -f /etc/haproxy/haproxy.cfg
+    if [[ -d /etc/haproxy/conf.d ]]; then
+      haproxy -c -f /etc/haproxy/haproxy.cfg -f /etc/haproxy/conf.d
+    else
+      haproxy -c -f /etc/haproxy/haproxy.cfg
+    fi
   args:
     executable: /bin/bash
   when:

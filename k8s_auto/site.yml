@@ -47,21 +47,6 @@
       run_once: true
       tags: always
 
-    - name: Show effective Kubernetes install order
-      debug:
-        msg: "{{ k8s_install_services | join(' -> ') }}"
-      run_once: true
-      tags: always
-
-    - name: Show enabled Kubernetes service scope and role mapping
-      debug:
-        msg: "{{ item.name }} [{{ item.scope }}] -> {{ k8s_service_roles[item.name] }}"
-      loop: "{{ k8s_install_service_details }}"
-      loop_control:
-        label: "{{ item.name }}"
-      run_once: true
-      tags: always
-
     - name: Run enabled Kubernetes services
       include_role:
         name: "{{ k8s_service_roles[item] }}"

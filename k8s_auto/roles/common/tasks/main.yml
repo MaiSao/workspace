@@ -12,10 +12,6 @@
         + exporter_images
       }}
 
-- tags: ["debug", "dryrun"]
-  debug:
-    var: container_images
-
 - name: Build manifest render list for dry-run visibility
   tags: ["dryrun"]
   set_fact:
@@ -36,45 +32,298 @@
         + kyverno_init
       }}
 
-- tags: ["debug", "dryrun"]
-  debug:
-    var: list_init_files
-
-- name: Render common node bootstrap script
-  tags: ["dryrun"]
-  template:
-    src: common-bootstrap.sh.j2
-    dest: /root/kube-common-bootstrap.sh
-    mode: '0755'
-  when:
-    - "'common' in k8s_install_services"
-    - common_bootstrap_enabled | default(false) | bool
-
-- name: Run common node bootstrap script with failure log tail
-  block:
-    - name: Run common node bootstrap script
-      shell: |
-        set -Eeuo pipefail
-        bash /root/kube-common-bootstrap.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log
-      args:
-        executable: /bin/bash
-  rescue:
-    - name: Read common bootstrap log tail after failure
-      shell: tail -n 120 {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log
-      register: __common_bootstrap_log_tail
-      failed_when: false
-      args:
-        executable: /bin/bash
-    - name: Show common bootstrap log tail
-      debug:
-        var: __common_bootstrap_log_tail.stdout_lines
-    - name: Fail common bootstrap with log path
-      fail:
-        msg: "common-bootstrap.sh failed. See {{ __bootstrap_dir }}/logs/common-bootstrap.{{ __session_time }}.log"
+- name: Stop kubelet before resetting Kubernetes state
+  systemd:
+    name: kubelet
+    state: stopped
+  failed_when: false
   when:
     - "'common' in k8s_install_services"
     - common_bootstrap_enabled | default(false) | bool
     - __rerun_bootstrap is defined
+
+- name: Stop HA services before resetting master nodes
+  loop:
+    - haproxy
+    - keepalived
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  failed_when: false
+  when:
+    - "'common' in k8s_install_services"
+    - common_bootstrap_enabled | default(false) | bool
+    - __rerun_bootstrap is defined
+    - "'master' in group_names"
+
+- name: Check whether kubeadm is installed before reset
+  shell: command -v kubeadm
+  register: __kubeadm_command
+  changed_when: false
+  failed_when: false
+  args:
+    executable: /bin/bash
+  when:
+    - "'common' in k8s_install_services"
+    - common_bootstrap_enabled | default(false) | bool
+    - __rerun_bootstrap is defined
+
+- name: Reset existing Kubernetes state with kubeadm
+  command: kubeadm reset -f
+  when:
+    - "'common' in k8s_install_services"
+    - common_bootstrap_enabled | default(false) | bool
+    - __rerun_bootstrap is defined
+    - __kubeadm_command is defined
+    - __kubeadm_command.rc == 0
+
+- name: Remove old Kubernetes directories and metadata
+  loop:
+    - /etc/kube-master-metadata
+    - /etc/kubernetes
+    - /etc/cni/net.d
+    - /var/lib/etcd
+    - "{{ etcdDataDir }}"
+    - /root/.kube
+  file:
+    path: "{{ item }}"
+    state: absent
+  when:
+    - "'common' in k8s_install_services"
+    - common_bootstrap_enabled | default(false) | bool
+    - __rerun_bootstrap is defined
+
+- name: Remove old user kubeconfig directories and shell exports
+  shell: |
+    set -Eeuo pipefail
+    rm -rf /home/*/.kube
+    sed -i '/KUBECONFIG/d' /root/.bashrc 2>/dev/null || true
+    for bashrc in /home/*/.bashrc; do
+      [[ -e "$bashrc" ]] || continue
+      sed -i '/KUBECONFIG/d' "$bashrc"
+    done
+  args:
+    executable: /bin/bash
+  when:
+    - "'common' in k8s_install_services"
+    - common_bootstrap_enabled | default(false) | bool
+    - __rerun_bootstrap is defined
+
+- name: Write Kubernetes node IP helper
+  copy:
+    dest: /etc/sysconfig/kubeip
+    mode: '0644'
+    content: |
+      {{ k8s_ip }}
+  when: "'common' in k8s_install_services"
+
+- name: Manage Kubernetes inventory host entries
+  blockinfile:
+    path: /etc/hosts
+    create: true
+    marker: "# {mark} ANSIBLE MANAGED KUBERNETES HOSTS"
+    block: |
+      {% for host in groups['all'] %}
+      {{ hostvars[host]['k8s_ip'] }} {{ hostvars[host]['ansible_nodename'] }} {{ hostvars[host]['ansible_hostname'] }}
+      {% endfor %}
+  when: "'common' in k8s_install_services"
+
+- name: Manage repository host entry
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^\S+\s+{{ repo_name | default("repository") }}(\s|$)'
+    line: "{{ repo_ip }} {{ repo_name | default('repository') }}"
+    create: true
+  when: "'common' in k8s_install_services"
+
+- name: Manage registry host entry
+  lineinfile:
+    path: /etc/hosts
+    regexp: '^\S+\s+{{ registry_name }}(\s|$)'
+    line: "{{ registry_ip }} {{ registry_name }}"
+    create: true
+  when: "'common' in k8s_install_services"
+
+- name: Render OS package repositories for Kubernetes install
+  copy:
+    dest: /etc/yum.repos.d/kubernetes.repo
+    mode: '0644'
+    content: |
+      {% for repo in os_repositories %}
+      [{{ repo.id }}]
+      name={{ repo.name }}
+      baseurl={{ repo.baseurl }}
+      enabled={{ repo.enabled | default(1) }}
+      gpgcheck={{ repo.gpgcheck | default(0) }}
+      {% if repo.module_hotfixes is defined %}module_hotfixes={{ repo.module_hotfixes }}{% endif %}
+      {% if repo.priority is defined %}priority={{ repo.priority }}{% endif %}
+
+      {% endfor %}
+  when: "'common' in k8s_install_services"
+
+- name: Disable swap for Kubernetes
+  command: swapoff -a
+  when: "'common' in k8s_install_services"
+
+- name: Disable IPv6 on all kernels
+  command: grubby --update-kernel=ALL --args=ipv6.disable=1
+  when: "'common' in k8s_install_services"
+
+- name: Load Kubernetes kernel modules
+  loop:
+    - br_netfilter
+    - overlay
+    - ip_vs
+    - ip_vs_rr
+    - ip_vs_wrr
+    - ip_vs_sh
+    - nf_conntrack
+  command: "modprobe {{ item }}"
+  when: "'common' in k8s_install_services"
+
+- name: Persist Kubernetes kernel modules
+  copy:
+    dest: /etc/modules-load.d/k8s_kernel_modules.conf
+    mode: '0644'
+    content: |
+      br_netfilter
+      overlay
+      ip_vs
+      ip_vs_rr
+      ip_vs_wrr
+      ip_vs_sh
+      nf_conntrack
+  when: "'common' in k8s_install_services"
+
+- name: Configure Kubernetes sysctl settings
+  copy:
+    dest: /etc/sysctl.d/10-kube.conf
+    mode: '0644'
+    content: |
+      vm.zone_reclaim_mode = 0
+      fs.file-max = 50000000
+      vm.swappiness = 10
+      vm.drop_caches = 0
+      vm.min_free_kbytes = 2097152
+      kernel.pid_max = 4194304
+      net.core.optmem_max = 81920
+      net.ipv4.ip_local_port_range = 2000 65000
+      net.ipv4.tcp_fin_timeout = 10
+      net.ipv4.tcp_synack_retries = 5
+      net.ipv4.tcp_syn_retries = 6
+      net.ipv4.tcp_keepalive_time = 300
+      net.ipv4.tcp_keepalive_probes = 9
+      net.ipv4.tcp_keepalive_intvl = 75
+      net.ipv4.tcp_rfc1337 = 1
+      net.ipv4.conf.all.log_martians = 1
+      net.ipv4.conf.default.log_martians = 1
+      net.ipv4.conf.all.rp_filter = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.core.somaxconn = 65535
+      net.core.netdev_max_backlog = 65535
+      net.ipv4.tcp_max_syn_backlog = 65535
+      net.ipv4.tcp_max_tw_buckets = 262144
+      net.ipv4.tcp_tw_reuse = 0
+      net.ipv4.tcp_slow_start_after_idle = 0
+      net.ipv4.udp_rmem_min = 4096
+      net.ipv4.udp_wmem_min = 4096
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv4.tcp_rmem = 4096 87380 6291456
+      net.ipv4.tcp_wmem = 4096 87380 16777216
+      net.core.rmem_max = 212992
+      net.core.wmem_max = 212992
+      net.core.netdev_budget = 1000
+      net.core.rmem_default = 262144
+      net.core.wmem_default = 262144
+      net.ipv4.ip_forward = 1
+      net.ipv4.ip_nonlocal_bind = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.bridge.bridge-nf-call-iptables = 1
+      fs.inotify.max_user_instances = 524288
+      fs.inotify.max_user_watches = 524288
+      vm.max_map_count = 1048576
+  when: "'common' in k8s_install_services"
+
+- name: Apply Kubernetes sysctl settings
+  command: sysctl --system
+  when: "'common' in k8s_install_services"
+
+- name: Install common Kubernetes packages
+  package:
+    name:
+      - container-selinux
+      - kubelet
+      - kubeadm
+      - conntrack
+      - socat
+      - bash-completion
+      - iproute-tc
+      - iptables-services
+    state: present
+  when: "'common' in k8s_install_services"
+
+- name: Create kubelet systemd drop-in directory
+  file:
+    path: /etc/systemd/system/kubelet.service.d
+    state: directory
+    mode: '0755'
+  when: "'common' in k8s_install_services"
+
+- name: Configure kubelet kubeadm systemd drop-in
+  copy:
+    dest: /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+    mode: '0644'
+    content: |
+      [Service]
+      Environment="KUBELET_KUBECONFIG_ARGS=--bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --kubeconfig=/etc/kubernetes/kubelet.conf"
+      Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+      EnvironmentFile=-/var/lib/kubelet/kubeadm-flags.env
+      EnvironmentFile=-/etc/default/kubelet
+      ExecStart=
+      ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_EXTRA_ARGS
+  when: "'common' in k8s_install_services"
+
+- name: Ensure kubelet defaults directory exists
+  file:
+    path: /etc/default
+    state: directory
+    mode: '0755'
+  when: "'common' in k8s_install_services"
+
+- name: Configure kubelet node IP
+  copy:
+    dest: /etc/default/kubelet
+    mode: '0644'
+    content: |
+      KUBELET_EXTRA_ARGS="--node-ip={{ k8s_ip }}"
+  when: "'common' in k8s_install_services"
+
+- name: Reload systemd after kubelet configuration
+  systemd:
+    daemon_reload: true
+  when: "'common' in k8s_install_services"
+
+- name: Ensure NetworkManager configuration directory exists
+  file:
+    path: /etc/NetworkManager/conf.d
+    state: directory
+    mode: '0755'
+  when:
+    - "'common' in k8s_install_services"
+    - cni_prime == 'calico'
+
+- name: Configure NetworkManager to ignore Calico interfaces
+  copy:
+    dest: /etc/NetworkManager/conf.d/calico.conf
+    mode: '0644'
+    content: |
+      [keyfile]
+      unmanaged-devices=interface-name:cali*;interface-name:tunl*;interface-name:vxlan.calico;interface-name:vxlan-v6.calico;interface-name:wireguard.cali;interface-name:wg-v6.cali"
+  when:
+    - "'common' in k8s_install_services"
+    - cni_prime == 'calico'
 
 - name: Create etcd client tools staging directory on master nodes
   file:

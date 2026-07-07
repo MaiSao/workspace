@@ -71,7 +71,7 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 - Split the active install flow into service-level roles: `common`, `containerd`, `haproxy`, `keepalived`, `kubeadm`, `services/calico`, `services/multus`, `services/whereabouts`, `services/sriov`, `services/macvlan`, `services/coredns`, `services/metrics_server`, `services/kube_state_metrics`, `services/kubelet_csr_approver`, `services/kyverno`, `services/etcd_jobs`, individual exporter roles, and `k8s_tuning`.
 - Updated `k8s_auto/site.yml` to a single `hosts: all` play that lists each split role once. Role-level `when` checks restrict first-master, master-only, worker, and optional-service work.
 - Updated `k8s_auto/group_vars/services.yml` service names to match the new roles. Default full install still runs when using `ansible-playbook -i inventory.ini site.yml`.
-- Split the old bootstrap responsibilities into `common-bootstrap.sh.j2`, `containerd-bootstrap.sh.j2`, `roles/haproxy/templates/haproxy.cfg.j2`, and `roles/keepalived/templates/keepalived.conf.j2`. The destructive common bootstrap script runs only when `common_bootstrap_enabled: true`.
+- Split the old bootstrap responsibilities into explicit `common` role tasks, `containerd-bootstrap.sh.j2`, `roles/haproxy/templates/haproxy.cfg.j2`, and `roles/keepalived/templates/keepalived.conf.j2`. Destructive common reset tasks run only when `common_bootstrap_enabled: true` and `__rerun_bootstrap` is defined.
 - Moved CNI and add-on manifest rendering into their owning service roles so templates live with the role that applies them. Legacy bundle roles remain in the tree for reference but are no longer called by `site.yml`.
 - Removed the old unused `roles/kubernetes-optimized/` directory after the active `site.yml` moved fully to split roles.
 
@@ -150,7 +150,7 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 
 - Moved bootstrap session setup to `site.yml` so all roles can use `__bootstrap_dir`, `__session_time`, and shared log paths without depending on the `common` role.
 - Kept `__bootstrap_dir` and `__registry_prefix` in `group_vars/all.yml` as global operator variables used by multiple roles and templates.
-- Replaced hardcoded yum/dnf repository blocks in `common-bootstrap.sh.j2` with the `os_repositories` list from `group_vars/all.yml`.
+- Replaced hardcoded yum/dnf repository blocks with the `os_repositories` list from `group_vars/all.yml`.
 - Reordered kubeadm tasks so additional control-plane nodes join before kubeconfig is distributed to configured master users.
 
 ## Change Log For Ordered Service Plan
@@ -158,7 +158,8 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 - Replaced the dictionary-style `k8s_service_groups` with ordered `k8s_service_plan` so install order no longer depends on YAML dictionary ordering.
 - Added `scope` metadata for built-in services to document whether work runs on all nodes, master nodes, the bootstrap master, join nodes, or mixed locations under `hosts: all`.
 - Added `site.yml` validation and debug output for effective service order plus service scope-to-role mapping.
-- Standardized install/bootstrap script logging for common, containerd, kubeadm init, kubeadm join, and join-command regeneration.
+- Replaced the old `common-bootstrap.sh.j2` script with named Ansible tasks inside `roles/common/tasks/main.yml` so reset, hosts, repository, kernel, package, kubelet, NetworkManager, and etcd client tool steps are visible independently.
+- Standardized install/bootstrap script logging for containerd, kubeadm init, kubeadm join, and join-command regeneration. The common role now uses named Ansible tasks instead of a bootstrap script.
 - Script-running tasks now capture stderr with stdout into `/root/kubebootstrap/logs/` and print the last 120 log lines on failure.
 - Runtime scripts and service units are intentionally not changed for Ansible logging behavior.
 
