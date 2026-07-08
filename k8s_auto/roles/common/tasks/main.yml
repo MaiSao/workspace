@@ -9,6 +9,7 @@
         else cilium_images if cni_prime == 'cilium'
         else calico_images )
         + (multus_images if multi_network | bool else [] )
+        + (sriov_images if (multi_network | bool and multus_sriov | bool) else [] )
         + exporter_images
       }}
 
@@ -26,7 +27,7 @@
         + (multus_init if multi_network | bool else [])
         + (whereabouts_init if multi_network | bool else [])
         + (macvlan_init if (multi_network | bool and multus_macvlan | bool) else [] )
-        + (sriov_init if multus_sriov | bool else [] )
+        + (sriov_init if (multi_network | bool and multus_sriov | bool) else [] )
         + ['metric-server-v0.8.0.yaml.j2', 'kube-state-metrics.yaml.j2']
         + (['kubelet-csr-approver.yaml.j2'] if kubelet_serverTLSBootstrap | default(false) | bool else [])
         + kyverno_init

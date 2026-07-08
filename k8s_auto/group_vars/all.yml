@@ -72,16 +72,6 @@ k8s_service_plan:
         scope: bootstrap_master
         requires: [multus]
         description: IPAM for secondary networks.
-      - name: sriov
-        enabled: false
-        scope: bootstrap_master
-        requires: [multus, whereabouts]
-        description: SR-IOV device plugin and SR-IOV NetworkAttachmentDefinitions.
-      - name: macvlan
-        enabled: false
-        scope: bootstrap_master
-        requires: [multus, whereabouts]
-        description: macvlan NetworkAttachmentDefinitions.
 
   - phase: addons
     description: Kubernetes cluster add-ons applied from the bootstrap master.
@@ -148,7 +138,7 @@ k8s_service_plan:
       - name: k8s_tuning
         enabled: true
         scope: mixed
-        description: Resource tuning for kubeadm-created workloads and static pod manifest patching.
+        description: Resource tuning for kubeadm-created workloads and static pod manifest patching; site.yml runs it after extra services.
 
 k8s_install_service_details: >-
   {{
@@ -308,7 +298,7 @@ cni_prime: calico
 multi_network: true
 
 # Install macvlan NetworkAttachmentDefinitions. Requires multi_network: true.
-multus_macvlan: false
+multus_macvlan: true
 
 # Install SR-IOV-related manifests. Requires multi_network: true and node NIC
 # preparation outside this file.

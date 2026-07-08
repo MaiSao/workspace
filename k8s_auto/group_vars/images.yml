@@ -28,21 +28,21 @@ kyverno_background_controller_image: kyverno/background-controller:v1.14.4
 kyverno_cleanup_controller_image: kyverno/cleanup-controller:v1.14.4
 kyverno_reports_controller_image: kyverno/reports-controller:v1.14.4
 cert_exporter_image: vht/cert-exporter:v2.8.0
-ip_pools_exporter_image: ip-pool-exporter:1.0.3
-snmp_exporter_image: prom/snmp-exporter:v0.15.0-vht
-snmp_switch_exporter_image: vht/mano/snmp-switch-exporter:v0.15.0
+ip_pools_exporter_image: vht/ip-pool-exporter:1.0.3
+snmp_exporter_image: vht/snmp-exporter:v0.15.0-vht
+snmp_switch_exporter_image: vht/snmp-switch-exporter:v0.15.0
 haproxy_exporter_image: vht/haproxy-exporter:v0.15.0
 keepalived_exporter_image: vht/keepalived-exporter:v1.7.1
-keepalived_exporter_tools_image: mano/busybox:1.37.0
-fluentbit_image: vht/fluent-bit:4.2.2
-local_path_provisioner_image: rancher/local-path-provisioner:v0.0.36
-local_path_helper_image: library/busybox:latest
-elasticsearch_image: vht/elasticsearch:8.19.9
-elasticsearch_sysctl_image: busybox:1.36
-elasticsearch_busybox_image: mano/busybox:1.37.0
-elasticsearch_setup_image: curlimages/curl:8.11.1
-kibana_image: vht/elastic/kibana:8.19.9
-elasticsearch_exporter_image: elk/elasticsearch-exporter:v1.3.0
+keepalived_exporter_tools_image: vht/busybox:1.37.0
+fluentbit_image: efk/fluent-bit:4.2.2
+local_path_provisioner_image: vht/local-path-provisioner:v0.0.26
+local_path_helper_image: vht/busybox:1.37.0
+elasticsearch_image: efk/elasticsearch:8.19.9
+elasticsearch_sysctl_image: vht/busybox:1.37.0
+elasticsearch_busybox_image: vht/busybox:1.37.0
+elasticsearch_setup_image: efk/curl:8.11.1
+kibana_image: efk/kibana:8.19.9
+elasticsearch_exporter_image: efk/elasticsearch-exporter:v1.3.0
 coredns_image: registry.k8s.io/coredns:v1.11.3
 kube_apiserver_image: "registry.k8s.io/kube-apiserver:{{ k8s_version }}"
 kube_controller_manager_image: "registry.k8s.io/kube-controller-manager:{{ k8s_version }}"
@@ -73,6 +73,10 @@ multus_images:
   - "{{ whereabouts_image }}"
   - "{{ multus_cni_image }}"
 
+# SR-IOV images used when multi_network and multus_sriov are true.
+sriov_images:
+  - "{{ sriov_device_plugin_image }}"
+
 # Operational add-on images used by service-level add-on roles.
 operation_images:
   - "{{ etcd_backup_image }}"
@@ -94,3 +98,64 @@ core_images:
   - "{{ kube_proxy_image }}"
   - "{{ kube_scheduler_image }}"
   - "{{ pause_image }}"
+
+#---------------------------------------------------
+# Per-service image preflight
+#---------------------------------------------------
+# site.yml uses these maps to verify required images from the configured
+# registry before a service role applies Kubernetes manifests. Keep these lists
+# aligned with images rendered by the matching role templates.
+#---------------------------------------------------
+
+service_image_requirements:
+  common: []
+  containerd: []
+  haproxy: []
+  keepalived: []
+  kubeadm: []
+  calico: "{{ calico_images if cni_prime == 'calico' else cilium_images if cni_prime == 'cilium' else calico_images }}"
+  multus: "{{ [multus_cni_image] if multi_network | bool else [] }}"
+  whereabouts: "{{ [whereabouts_image, kubectl_image] if multi_network | bool else [] }}"
+  coredns: []
+  metrics_server:
+    - "{{ metrics_server_image }}"
+  kube_state_metrics:
+    - "{{ kube_state_metrics_image }}"
+  kubelet_csr_approver: "{{ [kubelet_csr_approver_image] if kubelet_serverTLSBootstrap | default(false) | bool else [] }}"
+  kyverno:
+    - "{{ kyverno_pre_image }}"
+    - "{{ kyverno_image }}"
+    - "{{ kyverno_background_controller_image }}"
+    - "{{ kyverno_cleanup_controller_image }}"
+    - "{{ kyverno_reports_controller_image }}"
+  etcd_jobs:
+    - "{{ etcd_backup_image }}"
+  cert_exporter:
+    - "{{ cert_exporter_image }}"
+  snmp_exporter:
+    - "{{ snmp_exporter_image }}"
+  snmp_switch_exporter:
+    - "{{ snmp_switch_exporter_image }}"
+  haproxy_exporter: "{{ [haproxy_exporter_image] if setup_ha | default(true) | bool else [] }}"
+  keepalived_exporter: "{{ [keepalived_exporter_image, keepalived_exporter_tools_image] if setup_ha | default(true) | bool else [] }}"
+  ip_pools_exporter: "{{ [ip_pools_exporter_image] if multus_sriov | default(false) | bool else [] }}"
+  k8s_tuning: []
+
+cni_option_image_requirements:
+  sriov:
+    - "{{ sriov_device_plugin_image }}"
+  macvlan: []
+
+extra_service_image_requirements:
+  fluentbit:
+    - "{{ fluentbit_image }}"
+  local_path_provisioner:
+    - "{{ local_path_provisioner_image }}"
+    - "{{ local_path_helper_image }}"
+  elasticsearch:
+    - "{{ elasticsearch_image }}"
+    - "{{ elasticsearch_sysctl_image }}"
+    - "{{ elasticsearch_busybox_image }}"
+    - "{{ elasticsearch_setup_image }}"
+    - "{{ kibana_image }}"
+    - "{{ elasticsearch_exporter_image }}"

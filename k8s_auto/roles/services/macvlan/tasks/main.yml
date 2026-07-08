@@ -5,7 +5,6 @@
     src: "{{ item }}"
     dest: "{{ __bootstrap_dir }}/{{ item | replace('.j2','') }}"
   when:
-    - "'macvlan' in k8s_install_services"
     - multi_network | bool
     - multus_macvlan | bool
     - inventory_hostname == groups['master'][0]
@@ -17,7 +16,6 @@
   args:
     executable: /bin/bash
   when:
-    - "'macvlan' in k8s_install_services"
     - multi_network | bool
     - multus_macvlan | bool
     - inventory_hostname == groups['master'][0]

@@ -1,0 +1,19 @@
+---
+- name: Check images before installing CNI option {{ k8s_cni_option.name }}
+  include_tasks:
+    file: check-images.yml
+    apply:
+      tags: always
+  vars:
+    image_check_name: "{{ k8s_cni_option.name }}"
+    image_check_images: "{{ cni_option_image_requirements.get(k8s_cni_option.name, []) }}"
+  when:
+    - inventory_hostname == groups['master'][0]
+    - (cni_option_image_requirements.get(k8s_cni_option.name, [])) | length > 0
+
+- name: Run CNI option role {{ k8s_cni_option.name }}
+  include_role:
+    name: "{{ k8s_cni_option.role }}"
+    apply:
+      tags: always
+  tags: always

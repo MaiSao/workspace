@@ -21,6 +21,12 @@ Feature Switches
   multus_sriov             : {{ multus_sriov | default(false) | bool | lower }}
   kubelet_serverTLSBootstrap: {{ kubelet_serverTLSBootstrap | default(false) | bool | lower }}
 
+CNI Options
+  multus       : {{ 'enabled' if ((multi_network | default(false) | bool) and ('multus' in k8s_install_services)) else 'disabled' }}
+  whereabouts  : {{ 'enabled' if ((multi_network | default(false) | bool) and ('whereabouts' in k8s_install_services)) else 'disabled' }}
+  macvlan NADs : {{ 'enabled' if ((multi_network | default(false) | bool) and (multus_macvlan | default(false) | bool)) else 'disabled' }}
+  SR-IOV stack : {{ 'enabled' if ((multi_network | default(false) | bool) and (multus_sriov | default(false) | bool)) else 'disabled' }}
+
 Built-in Services
 {% for phase in k8s_service_plan %}
   {{ phase.phase }}
@@ -48,5 +54,6 @@ Disabled Built-in Services
 Gated Behavior
   ha_stack     : {{ 'install enabled HA services/exporters' if ((setup_ha | default(false) | bool) and (('haproxy' in k8s_install_services) or ('keepalived' in k8s_install_services) or ('haproxy_exporter' in k8s_install_services) or ('keepalived_exporter' in k8s_install_services))) else 'skip HA services/exporters' }}
   multus_stack : {{ 'install enabled Multus/Whereabouts services' if ((multi_network | default(false) | bool) and (('multus' in k8s_install_services) or ('whereabouts' in k8s_install_services))) else 'skip Multus/Whereabouts services' }}
-  macvlan_nads : {{ 'install' if ((multi_network | default(false) | bool) and (multus_macvlan | default(false) | bool) and ('macvlan' in k8s_install_services)) else 'skip' }}
-  sriov_stack  : {{ 'install' if ((multus_sriov | default(false) | bool) and ('sriov' in k8s_install_services)) else 'skip' }}
+  macvlan_nads : {{ 'install' if ((multi_network | default(false) | bool) and (multus_macvlan | default(false) | bool)) else 'skip' }}
+  sriov_stack  : {{ 'install' if ((multi_network | default(false) | bool) and (multus_sriov | default(false) | bool)) else 'skip' }}
+  k8s_tuning   : {{ 'run last after extra services' if ('k8s_tuning' in k8s_install_services) else 'disabled' }}

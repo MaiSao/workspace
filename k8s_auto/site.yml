@@ -54,17 +54,39 @@
       tags: always
 
     - name: Run enabled Kubernetes services
-      include_role:
-        name: "{{ k8s_service_roles[k8s_service_name] }}"
-      loop: "{{ k8s_install_services }}"
+      include_tasks:
+        file: tasks/run-k8s-service-role.yml
+        apply:
+          tags: always
+      loop: "{{ k8s_install_services | reject('equalto', 'k8s_tuning') | list }}"
       loop_control:
         loop_var: k8s_service_name
         label: "{{ k8s_service_name }}"
       tags: always
 
+    - name: Install enabled CNI option services
+      include_tasks:
+        file: tasks/run-cni-option-role.yml
+        apply:
+          tags: always
+      loop:
+        - name: sriov
+          role: services/sriov
+          enabled: "{{ multi_network | bool and multus_sriov | bool }}"
+        - name: macvlan
+          role: services/macvlan
+          enabled: "{{ multi_network | bool and multus_macvlan | bool }}"
+      loop_control:
+        loop_var: k8s_cni_option
+        label: "{{ k8s_cni_option.name }}"
+      when: k8s_cni_option.enabled | bool
+      tags: always
+
     - name: Install enabled extra service roles
-      include_role:
-        name: "{{ k8s_extra_service.role }}"
+      include_tasks:
+        file: tasks/run-extra-service-role.yml
+        apply:
+          tags: extra_services
       loop: "{{ k8s_enabled_extra_services }}"
       loop_control:
         loop_var: k8s_extra_service
@@ -73,3 +95,9 @@
         - inventory_hostname == groups['master'][0]
         - k8s_extra_service.enabled | default(true) | bool
       tags: extra_services
+
+    - name: Run post-install Kubernetes tuning
+      include_role:
+        name: k8s_tuning
+      when: "'k8s_tuning' in k8s_install_services"
+      tags: always
