@@ -100,6 +100,8 @@ spec:
                   fieldPath: metadata.namespace
             - name: CONFIG_MOUNT_PATH
               value: /etc/config/
+          resources:
+{{ local_path_provisioner_resources | to_nice_yaml(indent=2) | indent(12, true) }}
       volumes:
         - name: config-volume
           configMap:
@@ -155,3 +157,5 @@ data:
         - name: helper-pod
           image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ local_path_helper_image }}
           imagePullPolicy: IfNotPresent
+          resources:
+{{ local_path_helper_resources | to_nice_yaml(indent=2) | indent(12, true) }}

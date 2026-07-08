@@ -29,6 +29,19 @@
   include_tasks: join.yml
   when: "'kubeadm' in k8s_install_services"
 
+- name: Allow workloads to schedule on all joined control-plane nodes
+  shell: |
+    set -Eeuo pipefail
+    kubectl get nodes
+    kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
+    kubectl taint nodes --all node-role.kubernetes.io/master:NoSchedule- || true
+  args:
+    executable: /bin/bash
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - master_hybrid | default(false) | bool
+    - inventory_hostname == groups['master'][0]
+
 - name: Configure kubeconfig for master users
   include_tasks: kubeconfig.yml
   when: "'kubeadm' in k8s_install_services"

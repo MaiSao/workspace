@@ -1,27 +1,68 @@
 ---
-- name: Install Keepalived exporter package on master nodes
-  package:
-    name: "{{ keepalived_exporter.package_name }}"
-    state: present
-  when:
-    - "'keepalived_exporter' in k8s_install_services"
-    - "'master' in group_names"
-
-- name: Install Keepalived exporter systemd unit on master nodes
-  template:
-    src: keepalived-exporter.service.j2
-    dest: /etc/systemd/system/keepalived-exporter.service
-    mode: '0644'
-  when:
-    - "'keepalived_exporter' in k8s_install_services"
-    - "'master' in group_names"
-
-- name: Start Keepalived exporter host service on master nodes
+- name: Stop legacy Keepalived exporter host service on master nodes
   systemd:
     name: keepalived-exporter
-    state: restarted
-    enabled: true
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  failed_when: false
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Remove legacy Keepalived exporter systemd unit on master nodes
+  file:
+    path: /etc/systemd/system/keepalived-exporter.service
+    state: absent
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Reload systemd after removing legacy Keepalived exporter unit
+  systemd:
     daemon_reload: true
   when:
     - "'keepalived_exporter' in k8s_install_services"
     - "'master' in group_names"
+
+- name: Remove Keepalived exporter DaemonSet when HA setup is disabled
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n kube-system delete daemonset keepalived-exporter --ignore-not-found=true
+  args:
+    executable: /bin/bash
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - not (setup_ha | default(true) | bool)
+
+- name: Create Keepalived exporter manifest directory on bootstrap master
+  file:
+    path: "{{ __bootstrap_dir }}/manifests"
+    state: directory
+    mode: '0755'
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - setup_ha | default(true) | bool
+
+- name: Render Keepalived exporter DaemonSet manifest on bootstrap master
+  template:
+    src: keepalived-exporter.yaml.j2
+    dest: "{{ __bootstrap_dir }}/manifests/keepalived-exporter.yaml"
+    mode: '0644'
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - setup_ha | default(true) | bool
+
+- name: Apply Keepalived exporter DaemonSet
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/manifests/keepalived-exporter.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - setup_ha | default(true) | bool

@@ -14,9 +14,6 @@
     kubectl apply -f {{ __bootstrap_dir }}/calico-v3.28.2.yaml
     kubectl set env daemonset/calico-node -n kube-system \
       IP_AUTODETECTION_METHOD=cidr={{ ip_autodetection_method_cidr }}
-    {% if master_hybrid %}
-    kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
-    {% endif %}
   args:
     executable: /bin/bash
   when:

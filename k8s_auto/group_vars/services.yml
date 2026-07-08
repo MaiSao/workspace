@@ -172,17 +172,23 @@ kyverno_init:
 # k8s_service_plan in group_vars/all.yml. IP pools exporter also requires
 # multus_sriov: true because it reports SR-IOV IP pool state.
 haproxy_exporter:
-  package_name: haproxy_exporter
-  binary_path: /usr/local/bin/haproxy_exporter
   listen_address: ":9101"
   scrape_uri: unix:/var/lib/haproxy/stats
   extra_args: ""
 
 keepalived_exporter:
-  package_name: keepalived_exporter
-  binary_path: /usr/local/bin/keepalived_exporter
   listen_address: ":9165"
   extra_args: ""
+
+snmp_switch_exporter:
+  listen_address: ":9216"
+  config_file: /etc/snmp_exporter/snmp_switch.yml
+
+haproxy_exporter_init:
+  - haproxy-exporter.yaml.j2
+
+keepalived_exporter_init:
+  - keepalived-exporter.yaml.j2
 
 exporter_images: >-
   {{
@@ -190,6 +196,8 @@ exporter_images: >-
     + ([] if not (('ip_pools_exporter' in k8s_install_services) and (multus_sriov | default(false) | bool)) else [ip_pools_exporter_image])
     + ([] if 'snmp_exporter' not in k8s_install_services else [snmp_exporter_image])
     + ([] if 'snmp_switch_exporter' not in k8s_install_services else [snmp_switch_exporter_image])
+    + ([] if not (('haproxy_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [haproxy_exporter_image])
+    + ([] if not (('keepalived_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [keepalived_exporter_image, keepalived_exporter_tools_image])
   }}
 
 #---------------------------------------------------
@@ -203,11 +211,15 @@ exporter_images: >-
 # run before this role.
 elasticsearch_namespace: elk
 elasticsearch_cluster_name: es-hcm
-elasticsearch_network_interface: bond2.1005
-elasticsearch_seed_hosts: ["192.168.5.86", "192.168.5.3", "192.168.5.4"]
-elasticsearch_initial_master_nodes: ["bchcmcom02", "bchcmcom03", "bchcmcom04"]
+elasticsearch_network_interface: eth0
+elasticsearch_node_selector_key: es-role
+elasticsearch_node_label_targets:
+  - group: master
+    value: all
+elasticsearch_seed_hosts: ["elasticsearch-master"]
+elasticsearch_initial_master_nodes: ["elasticsearch-master-0", "elasticsearch-master-1", "elasticsearch-master-2"]
 elasticsearch_environment_label: production
-elasticsearch_host_network: true
+elasticsearch_host_network: false
 
 elasticsearch_basic_auth:
   username: elastic
@@ -237,8 +249,8 @@ elasticsearch_client_service:
 
 elasticsearch_kibana:
   enabled: true
-  replicas: 2
-  node_selector_role: master
+  replicas: 1
+  node_selector_role: all
   node_port: 8601
   base_path: /kibana
   security_encryption_key: xpack_security_encryption_key__1234
@@ -246,28 +258,36 @@ elasticsearch_kibana:
   reporting_encryption_key: reporting_encryption_key_987654321
   resources:
     requests: { cpu: "100m", memory: "100Mi" }
-    limits: { cpu: "2", memory: "4Gi" }
+    limits: { cpu: "1", memory: "1Gi" }
 
 elasticsearch_exporter:
   enabled: true
-  replicas: 2
-  node_selector_role: master
+  replicas: 1
+  node_selector_role: all
   node_port: 9114
   resources:
     requests: { cpu: "100m", memory: "100Mi" }
-    limits: { cpu: "2", memory: "4Gi" }
+    limits: { cpu: "500m", memory: "512Mi" }
+
+elasticsearch_init_container_resources:
+  requests: { cpu: "50m", memory: "64Mi" }
+  limits: { cpu: "500m", memory: "512Mi" }
+
+elasticsearch_setup_job_resources:
+  requests: { cpu: "50m", memory: "64Mi" }
+  limits: { cpu: "500m", memory: "256Mi" }
 
 elasticsearch_node_sets:
   master:
     replicas: 3
     roles: master
-    node_selector_role: master
-    java_opts: "-Xms8g -Xmx8g"
+    node_selector_role: all
+    java_opts: "-Xms2g -Xmx2g"
     resources:
-      requests: { cpu: "1", memory: "4Gi" }
-      limits: { cpu: "4", memory: "12Gi" }
-    data_storage: 128Gi
-    log_storage: 128Gi
+      requests: { cpu: "500m", memory: "2Gi" }
+      limits: { cpu: "2", memory: "4Gi" }
+    data_storage: 10Gi
+    log_storage: 5Gi
     config_extra: |
       thread_pool.write.size: 2
       thread_pool.write.queue_size: 1000
@@ -277,13 +297,13 @@ elasticsearch_node_sets:
   data:
     replicas: 3
     roles: data,ingest
-    node_selector_role: data
-    java_opts: "-Xms12g -Xmx12g"
+    node_selector_role: all
+    java_opts: "-Xms2g -Xmx2g"
     resources:
-      requests: { cpu: "2", memory: "4Gi" }
-      limits: { cpu: "8", memory: "16Gi" }
-    data_storage: 512Gi
-    log_storage: 512Gi
+      requests: { cpu: "1", memory: "2Gi" }
+      limits: { cpu: "4", memory: "6Gi" }
+    data_storage: 30Gi
+    log_storage: 10Gi
     config_extra: |
       thread_pool.write.size: 8
       thread_pool.write.queue_size: 8000
@@ -305,13 +325,13 @@ elasticsearch_node_sets:
   client:
     replicas: 3
     roles: ingest,remote_cluster_client
-    node_selector_role: client
-    java_opts: "-Xms4g -Xmx4g"
+    node_selector_role: all
+    java_opts: "-Xms1g -Xmx1g"
     resources:
-      requests: { cpu: "500m", memory: "2Gi" }
-      limits: { cpu: "4", memory: "8Gi" }
-    data_storage: 64Gi
-    log_storage: 64Gi
+      requests: { cpu: "500m", memory: "1Gi" }
+      limits: { cpu: "2", memory: "3Gi" }
+    data_storage: 10Gi
+    log_storage: 5Gi
     config_extra: |
       thread_pool.write.size: 4
       thread_pool.write.queue_size: 4000
@@ -332,6 +352,12 @@ local_path_default_path: /opt/local-path-provisioner
 local_path_reclaim_policy: Delete
 local_path_volume_binding_mode: WaitForFirstConsumer
 local_path_make_default_storage_class: false
+local_path_provisioner_resources:
+  requests: { cpu: "50m", memory: "64Mi" }
+  limits: { cpu: "500m", memory: "256Mi" }
+local_path_helper_resources:
+  requests: { cpu: "10m", memory: "16Mi" }
+  limits: { cpu: "100m", memory: "64Mi" }
 
 #---------------------------------------------------
 # Fluent Bit extra service

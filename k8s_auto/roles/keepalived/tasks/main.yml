@@ -1,4 +1,120 @@
 ---
+- name: Stop Keepalived when HA setup is disabled
+  systemd:
+    name: keepalived
+    state: stopped
+    enabled: false
+  failed_when: false
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'master' in group_names"
+    - not (setup_ha | default(true) | bool)
+
+- name: Set Keepalived runtime facts
+  set_fact:
+    __keepalived_bootstrap_master: "{{ groups['master'][0] }}"
+    __keepalived_vrrp_router_id_setting: "{{ keepalived_vrrp_router_id | default('auto') | string | lower }}"
+    __keepalived_vrrp_router_id_state_file: "{{ __bootstrap_dir }}/state/keepalived_vrrp_router_id"
+  when:
+    - "'keepalived' in k8s_install_services"
+
+- name: Validate Keepalived VRRP settings
+  assert:
+    that:
+      - __keepalived_vrrp_router_id_setting == 'auto' or ((keepalived_vrrp_router_id | string | regex_search('^([1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$')) is not none)
+      - (keepalived_vip_prefix | default(24) | int >= 1) and (keepalived_vip_prefix | default(24) | int <= 32)
+      - "'/' not in (k8s_master_ip | string)"
+    fail_msg: >-
+      Invalid Keepalived VRRP settings. keepalived_vrrp_router_id must be
+      'auto' or an integer from 1 to 255, keepalived_vip_prefix must be from
+      1 to 32, and k8s_master_ip must be a plain IP without CIDR.
+  run_once: true
+  when:
+    - "'keepalived' in k8s_install_services"
+    - setup_ha | default(true) | bool
+
+- name: Create Keepalived state directory on bootstrap master
+  file:
+    path: "{{ __keepalived_vrrp_router_id_state_file | dirname }}"
+    state: directory
+    mode: '0755'
+  run_once: true
+  delegate_to: "{{ __keepalived_bootstrap_master }}"
+  when:
+    - "'keepalived' in k8s_install_services"
+    - setup_ha | default(true) | bool
+    - __keepalived_vrrp_router_id_setting == 'auto'
+
+- name: Check generated Keepalived VRRP router ID state
+  stat:
+    path: "{{ __keepalived_vrrp_router_id_state_file }}"
+  register: __keepalived_vrrp_router_id_state
+  run_once: true
+  delegate_to: "{{ __keepalived_bootstrap_master }}"
+  when:
+    - "'keepalived' in k8s_install_services"
+    - setup_ha | default(true) | bool
+    - __keepalived_vrrp_router_id_setting == 'auto'
+
+- name: Generate Keepalived VRRP router ID once on bootstrap master
+  copy:
+    dest: "{{ __keepalived_vrrp_router_id_state_file }}"
+    content: "{{ range(1, 256) | random }}\n"
+    mode: '0644'
+  run_once: true
+  delegate_to: "{{ __keepalived_bootstrap_master }}"
+  when:
+    - "'keepalived' in k8s_install_services"
+    - setup_ha | default(true) | bool
+    - __keepalived_vrrp_router_id_setting == 'auto'
+    - not __keepalived_vrrp_router_id_state.stat.exists
+
+- name: Read generated Keepalived VRRP router ID
+  slurp:
+    src: "{{ __keepalived_vrrp_router_id_state_file }}"
+  register: __keepalived_vrrp_router_id_slurp
+  run_once: true
+  delegate_to: "{{ __keepalived_bootstrap_master }}"
+  when:
+    - "'keepalived' in k8s_install_services"
+    - setup_ha | default(true) | bool
+    - __keepalived_vrrp_router_id_setting == 'auto'
+
+- name: Share generated Keepalived VRRP router ID with master nodes
+  set_fact:
+    __keepalived_vrrp_router_id: "{{ __keepalived_vrrp_router_id_slurp.content | b64decode | trim | int }}"
+  loop: "{{ groups['master'] }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  run_once: true
+  when:
+    - "'keepalived' in k8s_install_services"
+    - setup_ha | default(true) | bool
+    - __keepalived_vrrp_router_id_setting == 'auto'
+
+- name: Share configured Keepalived VRRP router ID with master nodes
+  set_fact:
+    __keepalived_vrrp_router_id: "{{ keepalived_vrrp_router_id | int }}"
+  loop: "{{ groups['master'] }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  run_once: true
+  when:
+    - "'keepalived' in k8s_install_services"
+    - setup_ha | default(true) | bool
+    - __keepalived_vrrp_router_id_setting != 'auto'
+
+- name: Validate effective Keepalived VRRP router ID on master nodes
+  assert:
+    that:
+      - __keepalived_vrrp_router_id | int >= 1
+      - __keepalived_vrrp_router_id | int <= 255
+    fail_msg: "Effective Keepalived VRRP router ID must be from 1 to 255."
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'master' in group_names"
+    - setup_ha | default(true) | bool
+
 - name: Install Keepalived package on master nodes
   package:
     name: keepalived
@@ -6,6 +122,7 @@
   when:
     - "'keepalived' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Render Keepalived VRRP configuration
   template:
@@ -15,6 +132,7 @@
   when:
     - "'keepalived' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Render Keepalived Kubernetes API health check
   template:
@@ -24,6 +142,7 @@
   when:
     - "'keepalived' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Start Keepalived VIP service
   systemd:
@@ -33,3 +152,4 @@
   when:
     - "'keepalived' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool

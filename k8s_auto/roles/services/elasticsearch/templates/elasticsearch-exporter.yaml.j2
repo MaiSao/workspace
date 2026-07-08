@@ -74,7 +74,7 @@ spec:
           terminationMessagePolicy: File
       dnsPolicy: ClusterFirst
       nodeSelector:
-        es-role: {{ elasticsearch_exporter.node_selector_role }}
+        {{ elasticsearch_node_selector_key | default('es-role') }}: {{ elasticsearch_exporter.node_selector_role }}
       restartPolicy: Always
       schedulerName: default-scheduler
       securityContext: {}

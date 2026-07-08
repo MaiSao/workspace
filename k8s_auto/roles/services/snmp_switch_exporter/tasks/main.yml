@@ -1,4 +1,21 @@
 ---
+- name: Create SNMP switch exporter host config directory on master nodes
+  file:
+    path: /etc/snmp_exporter
+    state: directory
+  when:
+    - "'snmp_switch_exporter' in k8s_install_services"
+    - inventory_hostname in groups['master']
+
+- name: Install SNMP switch exporter module configuration on master nodes
+  copy:
+    src: "{{ playbook_dir }}/roles/services/snmp_exporter/files/snmp.yml"
+    dest: /etc/snmp_exporter/snmp_switch.yml
+    mode: '0644'
+  when:
+    - "'snmp_switch_exporter' in k8s_install_services"
+    - inventory_hostname in groups['master']
+
 - name: Render SNMP switch exporter manifest on bootstrap master
   template:
     src: snmp-switch-exporter.yaml.j2

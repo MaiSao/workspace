@@ -30,6 +30,8 @@
         + ['metric-server-v0.8.0.yaml.j2', 'kube-state-metrics.yaml.j2']
         + (['kubelet-csr-approver.yaml.j2'] if kubelet_serverTLSBootstrap | default(false) | bool else [])
         + kyverno_init
+        + (haproxy_exporter_init if (('haproxy_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [])
+        + (keepalived_exporter_init if (('keepalived_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [])
       }}
 
 - name: Stop kubelet before resetting Kubernetes state

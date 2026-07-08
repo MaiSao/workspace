@@ -1,27 +1,68 @@
 ---
-- name: Install HAProxy exporter package on master nodes
-  package:
-    name: "{{ haproxy_exporter.package_name }}"
-    state: present
-  when:
-    - "'haproxy_exporter' in k8s_install_services"
-    - "'master' in group_names"
-
-- name: Install HAProxy exporter systemd unit on master nodes
-  template:
-    src: haproxy-exporter.service.j2
-    dest: /etc/systemd/system/haproxy-exporter.service
-    mode: '0644'
-  when:
-    - "'haproxy_exporter' in k8s_install_services"
-    - "'master' in group_names"
-
-- name: Start HAProxy exporter host service on master nodes
+- name: Stop legacy HAProxy exporter host service on master nodes
   systemd:
     name: haproxy-exporter
-    state: restarted
-    enabled: true
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  failed_when: false
+  when:
+    - "'haproxy_exporter' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Remove legacy HAProxy exporter systemd unit on master nodes
+  file:
+    path: /etc/systemd/system/haproxy-exporter.service
+    state: absent
+  when:
+    - "'haproxy_exporter' in k8s_install_services"
+    - "'master' in group_names"
+
+- name: Reload systemd after removing legacy HAProxy exporter unit
+  systemd:
     daemon_reload: true
   when:
     - "'haproxy_exporter' in k8s_install_services"
     - "'master' in group_names"
+
+- name: Remove HAProxy exporter DaemonSet when HA setup is disabled
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n kube-system delete daemonset haproxy-exporter --ignore-not-found=true
+  args:
+    executable: /bin/bash
+  when:
+    - "'haproxy_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - not (setup_ha | default(true) | bool)
+
+- name: Create HAProxy exporter manifest directory on bootstrap master
+  file:
+    path: "{{ __bootstrap_dir }}/manifests"
+    state: directory
+    mode: '0755'
+  when:
+    - "'haproxy_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - setup_ha | default(true) | bool
+
+- name: Render HAProxy exporter DaemonSet manifest on bootstrap master
+  template:
+    src: haproxy-exporter.yaml.j2
+    dest: "{{ __bootstrap_dir }}/manifests/haproxy-exporter.yaml"
+    mode: '0644'
+  when:
+    - "'haproxy_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - setup_ha | default(true) | bool
+
+- name: Apply HAProxy exporter DaemonSet
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/manifests/haproxy-exporter.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'haproxy_exporter' in k8s_install_services"
+    - inventory_hostname == groups['master'][0]
+    - setup_ha | default(true) | bool

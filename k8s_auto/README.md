@@ -69,8 +69,8 @@ roles/services/cert_exporter/ certificate expiration exporter
 roles/services/ip_pools_exporter/ SR-IOV IP pools exporter
 roles/services/snmp_exporter/ SNMP daemon config and SNMP exporter
 roles/services/snmp_switch_exporter/ SNMP switch exporter
-roles/services/haproxy_exporter/ HAProxy host-service exporter
-roles/services/keepalived_exporter/ Keepalived host-service exporter
+roles/services/haproxy_exporter/ HAProxy exporter DaemonSet on master nodes
+roles/services/keepalived_exporter/ Keepalived exporter DaemonSet on master nodes
 roles/services/fluentbit/     optional Fluent Bit extra service for cluster, host, and application logs
 roles/services/local_path_provisioner/ optional Rancher local-path storage provisioner
 roles/services/elasticsearch/ optional Elasticsearch, Kibana, and Elasticsearch exporter stack

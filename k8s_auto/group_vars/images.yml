@@ -31,6 +31,9 @@ cert_exporter_image: vht/cert-exporter:v2.8.0
 ip_pools_exporter_image: ip-pool-exporter:1.0.3
 snmp_exporter_image: prom/snmp-exporter:v0.15.0-vht
 snmp_switch_exporter_image: vht/mano/snmp-switch-exporter:v0.15.0
+haproxy_exporter_image: vht/haproxy-exporter:v0.15.0
+keepalived_exporter_image: vht/keepalived-exporter:v1.7.1
+keepalived_exporter_tools_image: mano/busybox:1.37.0
 fluentbit_image: vht/fluent-bit:4.2.2
 local_path_provisioner_image: rancher/local-path-provisioner:v0.0.36
 local_path_helper_image: library/busybox:latest

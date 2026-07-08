@@ -40,12 +40,12 @@ k8s_service_plan:
       - name: haproxy
         enabled: true
         scope: master_nodes
-        description: Kubernetes API load balancer on master nodes.
+        description: Kubernetes API load balancer on master nodes when setup_ha is true.
       - name: keepalived
         enabled: true
         scope: master_nodes
         requires: [haproxy]
-        description: Kubernetes API VIP and health check on master nodes.
+        description: Kubernetes API VIP and health check on master nodes when setup_ha is true.
 
   - phase: cluster
     description: kubeadm cluster bootstrap and join flow.
@@ -53,8 +53,8 @@ k8s_service_plan:
       - name: kubeadm
         enabled: true
         scope: mixed
-        requires: [common, containerd, haproxy, keepalived]
-        description: Audit policy, kubeadm config, init, join command generation, node join, and kubeconfig distribution.
+        requires: [common, containerd]
+        description: Audit policy, kubeadm config, init, join command generation, node join, and kubeconfig distribution. Uses HAProxy/Keepalived endpoint only when setup_ha is true.
 
   - phase: network
     description: Cluster networking and NetworkAttachmentDefinitions.
@@ -130,12 +130,12 @@ k8s_service_plan:
         enabled: true
         scope: master_nodes
         requires: [haproxy]
-        description: HAProxy host-service exporter on master nodes.
+        description: HAProxy exporter DaemonSet scheduled on master nodes.
       - name: keepalived_exporter
         enabled: true
         scope: master_nodes
         requires: [keepalived]
-        description: Keepalived host-service exporter on master nodes.
+        description: Keepalived exporter DaemonSet scheduled on master nodes.
       - name: ip_pools_exporter
         enabled: false
         scope: bootstrap_master
@@ -293,8 +293,12 @@ localAPIEndpointAddress: "{{ hostvars[groups['master'][0]]['k8s_ip'] }}"
 localAPIEndpointPort: 6443
 
 # HAProxy frontend port for Kubernetes API and Keepalived virtual IP.
+# Set setup_ha to true only when the cluster should use HAProxy, Keepalived,
+# and their exporters. When false, kubeadm uses the bootstrap master's local
+# API endpoint directly even if the inventory contains multiple master nodes.
+setup_ha: true
 ha_apiserver_port: 8443
-k8s_master_ip: 172.20.3.117
+k8s_master_ip: 172.20.3.155
 
 # Primary CNI. Current templates support calico. cilium is referenced but does
 # not currently have a matching cilium_init template list in services.yml.
@@ -321,10 +325,14 @@ multus_sriov: false
 #---------------------------------------------------
 # Keepalived VRRP
 #---------------------------------------------------
-# VRRP authentication password and router ID. All master nodes must use the same
-# values. Router ID must be unique on the L2 segment.
+# VRRP authentication password, VIP prefix, and router ID. All master nodes must
+# use the same values. Router ID must be unique on the L2 segment.
+# keepalived_vrrp_router_id:
+#   auto: generate once on the bootstrap master and reuse from state.
+#   1-255: use the operator-provided router ID.
 keepalived_auth_pass: "3333"
-keepalived_vrrp_router_id: 151
+keepalived_vip_prefix: 24
+keepalived_vrrp_router_id: auto
 
 #---------------------------------------------------
 # Container registry endpoint

@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: keepalived-exporter
+  namespace: kube-system
+  labels:
+    app: keepalived-exporter
+spec:
+  selector:
+    matchLabels:
+      app: keepalived-exporter
+  template:
+    metadata:
+      labels:
+        app: keepalived-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9165"
+    spec:
+      hostNetwork: true
+      hostPID: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      initContainers:
+        - name: keepalived-exporter-tools
+          image: {{ __registry_prefix }}/{{ keepalived_exporter_tools_image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              cp /bin/busybox /tools/busybox
+              cat > /tools/bash <<'EOF'
+              #!/keepalived-exporter-tools/busybox sh
+              exec /keepalived-exporter-tools/busybox sh "$@"
+              EOF
+              cat > /tools/keepalived <<'EOF'
+              #!/keepalived-exporter-tools/busybox sh
+              case "$1" in
+                --signum=DATA)
+                  echo 10
+                  ;;
+                --signum=STATS)
+                  echo 12
+                  ;;
+                -v|--version)
+                  echo "Keepalived v2.2.4 (exporter wrapper)" >&2
+                  ;;
+                *)
+                  echo "unsupported keepalived wrapper argument: $*" >&2
+                  exit 1
+                  ;;
+              esac
+              EOF
+              chmod 0755 /tools/busybox /tools/bash /tools/keepalived
+          volumeMounts:
+            - mountPath: /tools
+              name: keepalived-exporter-tools
+      containers:
+        - name: keepalived-exporter
+          image: {{ __registry_prefix }}/{{ keepalived_exporter_image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PATH
+              value: /keepalived-exporter-tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          args:
+            - --web.listen-address={{ keepalived_exporter.listen_address }}
+{% for arg in (keepalived_exporter.extra_args | default('', true)).split() %}
+            - {{ arg | quote }}
+{% endfor %}
+          ports:
+            - containerPort: 9165
+              hostPort: 9165
+              name: metrics
+              protocol: TCP
+          resources:
+{{ k8s_resources.keepalived_exporter | to_nice_yaml(indent=2) | indent(12, true) }}
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: /keepalived-exporter-tools
+              name: keepalived-exporter-tools
+              readOnly: true
+            - mountPath: /var/run
+              name: host-var-run
+            - mountPath: /tmp
+              name: host-tmp
+      volumes:
+        - name: keepalived-exporter-tools
+          emptyDir: {}
+        - name: host-var-run
+          hostPath:
+            path: /var/run
+            type: Directory
+        - name: host-tmp
+          hostPath:
+            path: /tmp
+            type: Directory

@@ -38,6 +38,9 @@ spec:
         - name: snmp-switch-exporter
           image: {{ __registry_prefix }}/{{ snmp_switch_exporter_image }}
           imagePullPolicy: Always
+          args:
+            - --config.file={{ snmp_switch_exporter.config_file }}
+            - --web.listen-address={{ snmp_switch_exporter.listen_address }}
           ports:
             - containerPort: 9216
               hostPort: 9216
@@ -48,11 +51,12 @@ spec:
           volumeMounts:
             - mountPath: /etc/snmp_exporter
               name: snmp
+              readOnly: true
       volumes:
         - name: snmp
           hostPath:
             path: /etc/snmp_exporter
-            type: DirectoryOrCreate
+            type: Directory
 ---
 apiVersion: v1
 kind: Service

@@ -80,6 +80,12 @@ k8s_resources:
   snmp_switch_exporter:
     requests: { cpu: "20m", memory: "250Mi" }
     limits: { cpu: "500m", memory: "1Gi" }
+  haproxy_exporter:
+    requests: { cpu: "20m", memory: "64Mi" }
+    limits: { cpu: "200m", memory: "256Mi" }
+  keepalived_exporter:
+    requests: { cpu: "20m", memory: "64Mi" }
+    limits: { cpu: "200m", memory: "256Mi" }
   fluentbit:
     requests: { cpu: "1", memory: "50Mi" }
     limits: { cpu: "2", memory: "4Gi" }

@@ -8,6 +8,12 @@
     - group_vars/services.yml
     - group_vars/resources.yml
   tasks:
+    - name: Show effective Kubernetes installation summary
+      debug:
+        msg: "{{ lookup('template', 'templates/install-summary.txt.j2').splitlines() }}"
+      run_once: true
+      tags: always
+
     - name: Set global bootstrap runtime facts
       set_fact:
         __session_time: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"

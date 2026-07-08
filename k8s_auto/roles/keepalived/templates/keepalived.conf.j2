@@ -17,14 +17,14 @@ vrrp_script check_apiserver {
 vrrp_instance VI_1 {
     state MASTER
     interface {{ interface_k8s }}
-    virtual_router_id {{ keepalived_vrrp_router_id }}
+    virtual_router_id {{ __keepalived_vrrp_router_id }}
     priority 25{{ priority }}
     authentication {
         auth_type PASS
         auth_pass {{ keepalived_auth_pass }}
     }
     virtual_ipaddress {
-        {{ k8s_master_ip }}
+        {{ k8s_master_ip }}/{{ keepalived_vip_prefix | default(24) }}
     }
     track_script {
         check_apiserver

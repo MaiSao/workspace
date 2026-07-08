@@ -1,4 +1,16 @@
 ---
+- name: Stop HAProxy when HA setup is disabled
+  systemd:
+    name: haproxy
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  failed_when: false
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'master' in group_names"
+    - not (setup_ha | default(true) | bool)
+
 - name: Install HAProxy package on master nodes
   package:
     name: haproxy
@@ -6,6 +18,7 @@
   when:
     - "'haproxy' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Allow HAProxy to connect to Kubernetes API backends
   shell: |
@@ -17,10 +30,10 @@
   when:
     - "'haproxy' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Remove stale HAProxy Kubernetes API config fragments
   loop:
-    - kubernetes.cfg
     - apiserver.cfg
     - kube-apiserver.cfg
   file:
@@ -29,6 +42,17 @@
   when:
     - "'haproxy' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Create HAProxy config fragment directory
+  file:
+    path: /etc/haproxy/conf.d
+    state: directory
+    mode: '0755'
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Render HAProxy Kubernetes API load balancer config
   template:
@@ -38,6 +62,40 @@
   when:
     - "'haproxy' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Render HAProxy Kubernetes API config fragment
+  template:
+    src: kubernetes.cfg.j2
+    dest: /etc/haproxy/conf.d/kubernetes.cfg
+    mode: '0644'
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Create HAProxy systemd override directory
+  file:
+    path: /etc/systemd/system/haproxy.service.d
+    state: directory
+    mode: '0755'
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Configure HAProxy to load Kubernetes config fragments
+  copy:
+    dest: /etc/systemd/system/haproxy.service.d/kubernetes.conf
+    mode: '0644'
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -f /etc/haproxy/conf.d -p /run/haproxy.pid
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Validate HAProxy configuration
   shell: |
@@ -52,21 +110,15 @@
   when:
     - "'haproxy' in k8s_install_services"
     - "'master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Start HAProxy Kubernetes API load balancer
   systemd:
     name: haproxy
     state: restarted
     enabled: true
+    daemon_reload: true
   when:
     - "'haproxy' in k8s_install_services"
     - "'master' in group_names"
-
-- name: Mark node as Kubernetes control-plane candidate
-  copy:
-    dest: /etc/kube-master-metadata
-    content: "KubeMaster\n"
-    mode: '0644'
-  when:
-    - "'haproxy' in k8s_install_services"
-    - "'master' in group_names"
+    - setup_ha | default(true) | bool

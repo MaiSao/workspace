@@ -55,3 +55,5 @@ spec:
                 -X POST "https://elasticsearch-master:9200/_security/user/${KIBANA_USERNAME}/_password" \
                 -H "Content-Type: application/json" \
                 -d "{\"password\":\"${KIBANA_PASSWORD}\"}"
+          resources:
+{{ elasticsearch_setup_job_resources | to_nice_yaml(indent=2) | indent(12, true) }}

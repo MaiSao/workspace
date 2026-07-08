@@ -18,6 +18,15 @@
     'kubeadm' in k8s_install_services
     and 'master' in group_names
 
+- name: Mark node as Kubernetes control-plane candidate
+  copy:
+    dest: /etc/kube-master-metadata
+    content: "KubeMaster\n"
+    mode: '0644'
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - "'master' in group_names"
+
 - name: Render kubeadm configuration files on bootstrap master
   loop: "{{ kubeadm_init }}"
   template:

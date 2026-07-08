@@ -33,6 +33,16 @@
     state: directory
     recurse: true
 
+- name: Label Elasticsearch target node groups
+  include_tasks: label-node-group.yml
+  loop: "{{ elasticsearch_node_label_targets | default([]) }}"
+  loop_control:
+    loop_var: elasticsearch_node_label_group
+  when:
+    - elasticsearch_node_label_group.group is defined
+    - elasticsearch_node_label_group.value is defined
+    - (groups[elasticsearch_node_label_group.group] | default([])) | length > 0
+
 - name: Render Elasticsearch manifests
   loop:
     - namespace.yaml.j2

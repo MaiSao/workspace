@@ -21,7 +21,9 @@ apiServer:
 {%for host in groups['master']%}
   - {{ hostvars[host]['k8s_ip'] }}
 {% endfor %}
+{% if setup_ha | default(true) | bool %}
   - {{ k8s_master_ip }}
+{% endif %}
   - 127.0.0.1
   - {{ clusterName }}
   - {{ clusterName }}.default
@@ -58,7 +60,11 @@ apiServer:
     value: {{ apiserver_service_node_port_range }}
 certificatesDir: {{ certificatesDir }}
 clusterName: {{ clusterName }}
+{% if setup_ha | default(true) | bool %}
 controlPlaneEndpoint: "{{ k8s_master_ip }}:{{ ha_apiserver_port }}"
+{% else %}
+controlPlaneEndpoint: "{{ localAPIEndpointAddress }}:{{ localAPIEndpointPort }}"
+{% endif %}
 
 controllerManager: 
   extraArgs:

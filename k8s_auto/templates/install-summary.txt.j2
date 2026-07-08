@@ -1,0 +1,52 @@
+Kubernetes installation summary
+===============================
+
+Inventory
+  masters : {{ groups.get('master', []) | join(', ') }}
+  workers : {{ (groups.get('worker', []) | join(', ')) if (groups.get('worker', []) | length > 0) else 'none' }}
+
+Cluster
+  version : {{ k8s_version }}
+  HA      : {{ setup_ha | default(false) | bool | lower }}
+  API     : {{ (k8s_master_ip ~ ':' ~ ha_apiserver_port) if (setup_ha | default(false) | bool) else (localAPIEndpointAddress ~ ':' ~ localAPIEndpointPort) }}
+  VIP     : {{ (k8s_master_ip ~ '/' ~ (keepalived_vip_prefix | default(24) | string)) if (setup_ha | default(false) | bool) else 'disabled' }}
+  VRRP ID : {{ keepalived_vrrp_router_id | default('auto') }}
+
+Feature Switches
+  common_bootstrap_enabled : {{ common_bootstrap_enabled | default(false) | bool | lower }}
+  master_hybrid            : {{ master_hybrid | default(false) | bool | lower }}
+  cni_prime                : {{ cni_prime }}
+  multi_network            : {{ multi_network | default(false) | bool | lower }}
+  multus_macvlan           : {{ multus_macvlan | default(false) | bool | lower }}
+  multus_sriov             : {{ multus_sriov | default(false) | bool | lower }}
+  kubelet_serverTLSBootstrap: {{ kubelet_serverTLSBootstrap | default(false) | bool | lower }}
+
+Built-in Services
+{% for phase in k8s_service_plan %}
+  {{ phase.phase }}
+{% for service in phase.services if service.enabled | default(false) | bool %}
+    - {{ service.name }} [{{ service.scope }}] -> {{ k8s_service_roles.get(service.name, 'missing') }}{{ (' (requires: ' ~ (service.requires | join(', ')) ~ ')') if service.requires is defined else '' }}
+{% else %}
+    - none
+{% endfor %}
+{% endfor %}
+
+Extra Services
+{% for service in k8s_enabled_extra_services if service.enabled | default(true) | bool %}
+  - {{ service.name }} [{{ service.scope }}] -> {{ service.role }}{{ (' (depends on: ' ~ (service.depends_on | join(', ')) ~ ')') if service.depends_on is defined else '' }}
+{% else %}
+  - none
+{% endfor %}
+
+Disabled Built-in Services
+{% for service in (k8s_service_plan | map(attribute='services') | flatten) if not (service.enabled | default(false) | bool) %}
+  - {{ service.name }} [{{ service.scope }}]
+{% else %}
+  - none
+{% endfor %}
+
+Gated Behavior
+  ha_stack     : {{ 'install enabled HA services/exporters' if ((setup_ha | default(false) | bool) and (('haproxy' in k8s_install_services) or ('keepalived' in k8s_install_services) or ('haproxy_exporter' in k8s_install_services) or ('keepalived_exporter' in k8s_install_services))) else 'skip HA services/exporters' }}
+  multus_stack : {{ 'install enabled Multus/Whereabouts services' if ((multi_network | default(false) | bool) and (('multus' in k8s_install_services) or ('whereabouts' in k8s_install_services))) else 'skip Multus/Whereabouts services' }}
+  macvlan_nads : {{ 'install' if ((multi_network | default(false) | bool) and (multus_macvlan | default(false) | bool) and ('macvlan' in k8s_install_services)) else 'skip' }}
+  sriov_stack  : {{ 'install' if ((multus_sriov | default(false) | bool) and ('sriov' in k8s_install_services)) else 'skip' }}
