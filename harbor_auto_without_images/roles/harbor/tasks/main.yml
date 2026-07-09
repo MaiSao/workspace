@@ -81,20 +81,52 @@
 - name: Config local docker to use Harbor
   shell: /tmp/config_docker.sh
 
+- name: Stop Harbor service before restarting Docker
+  ansible.builtin.systemd:
+    name: harbor
+    state: stopped
+  failed_when: false
+
 - name: Restart Docker
   ansible.builtin.systemd:
     name: docker
     state: restarted
 
-- name: Down harbor
-  command: /usr/bin/docker-compose -f {{ harbor_install_dir }}/docker-compose.yml down
-  ignore_errors: yes
+- name: Check whether the existing Harbor Compose file is present
+  ansible.builtin.stat:
+    path: "{{ harbor_install_dir }}/docker-compose.yml"
+  register: harbor_compose_file
+
+- name: Stop and remove existing Harbor containers
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker-compose
+      - -f
+      - "{{ harbor_install_dir }}/docker-compose.yml"
+      - down
+      - --remove-orphans
+  when: harbor_compose_file.stat.exists
+
+- name: Wait until existing Harbor containers are removed
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/docker-compose
+      - -f
+      - "{{ harbor_install_dir }}/docker-compose.yml"
+      - ps
+      - -q
+  register: harbor_compose_containers
+  changed_when: false
+  retries: 12
+  delay: 5
+  until: harbor_compose_containers.stdout | trim | length == 0
+  when: harbor_compose_file.stat.exists
 
 - name: Remove old harbor
-  file:
+  ansible.builtin.file:
     path: "{{ item }}"
     state: absent
-  with_items:
+  loop:
     - "{{ harbor_install_dir }}"
     - "{{ harbor_data_volume }}"
 
