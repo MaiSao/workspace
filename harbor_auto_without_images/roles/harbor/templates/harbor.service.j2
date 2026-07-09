@@ -1,0 +1,24 @@
+[Unit]
+Description=Harbor service with docker-compose
+Requires=docker.service
+After=docker.service
+
+[Service]
+Restart=always
+#Type=oneshot
+RemainAfterExit=yes
+StandardError=null
+StandardOutput=null
+WorkingDirectory={{ harbor_install_dir }}/
+
+# Remove old containers
+ExecStartPre=/usr/bin/docker-compose -f {{ harbor_install_dir }}/docker-compose.yml down -v
+
+# Compose up
+ExecStart=/usr/bin/docker-compose -f {{ harbor_install_dir }}/docker-compose.yml up -d
+
+# Compose down, remove containers
+ExecStop=/usr/bin/docker-compose -f {{ harbor_install_dir }}/docker-compose.yml down -v
+
+[Install]
+WantedBy=multi-user.target

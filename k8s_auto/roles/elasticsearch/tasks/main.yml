@@ -1,0 +1,254 @@
+---
+- name: Check Elasticsearch stack images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ extra_service_image_requirements.elasticsearch | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+
+- name: Set Elasticsearch render directory
+  set_fact:
+    __elasticsearch_render_dir: "{{ __bootstrap_dir | default('/root/kubebootstrap') }}/elasticsearch"
+
+- name: Verify Local Path Provisioner dependency for Elasticsearch
+  assert:
+    that:
+      - "'local_path_provisioner' in k8s_install_extra_services"
+    fail_msg: >-
+      Elasticsearch uses Local Path Provisioner for PVCs.
+      Enable local_path_provisioner in k8s_extra_services.
+
+- name: Build Elasticsearch eligible node list
+  set_fact:
+    __elasticsearch_target_hosts: "{{ elasticsearch_target_hosts }}"
+
+- name: Initialize Elasticsearch Kubernetes node-name list
+  set_fact:
+    __elasticsearch_target_node_names: []
+
+- name: Resolve Elasticsearch Kubernetes node names
+  set_fact:
+    __elasticsearch_target_node_names: >-
+      {{
+        __elasticsearch_target_node_names
+        + [
+            (
+              hostvars[item].k8s_node_name
+              | default(hostvars[item].ansible_hostname)
+              | default(item)
+              | lower
+            )
+          ]
+      }}
+  loop: "{{ __elasticsearch_target_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Validate Elasticsearch node-set replicas against eligible nodes
+  assert:
+    that:
+      - item.value.replicas | int >= 0
+      - item.key != 'master' or item.value.replicas | int >= 1
+      - item.value.replicas | int <= (__elasticsearch_target_hosts | length)
+    fail_msg: >-
+      Elasticsearch node set {{ item.key }} requests {{ item.value.replicas }}
+      replica(s), but only {{ __elasticsearch_target_hosts | length }} target
+      node(s) are labeled. Required pod anti-affinity allows at most one
+      {{ item.key }} pod per target node.
+  loop: "{{ elasticsearch_node_sets | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Validate Elasticsearch node IP network ports
+  assert:
+    that:
+      - >-
+        (
+          elasticsearch_node_sets
+          | dict2items
+          | map(attribute='value.http_port')
+          | map('int')
+          | list
+          | unique
+          | length
+        ) == (elasticsearch_node_sets | length)
+      - >-
+        (
+          elasticsearch_node_sets
+          | dict2items
+          | map(attribute='value.transport_port')
+          | map('int')
+          | list
+          | unique
+          | length
+        ) == (elasticsearch_node_sets | length)
+      - elasticsearch_node_sets.master.http_port | int == 9200
+      - elasticsearch_node_sets.master.transport_port | int == 9300
+    fail_msg: >-
+      node_ip mode uses hostNetwork, so every Elasticsearch node set requires
+      unique http_port and transport_port values. The master service must keep
+      ports 9200 and 9300 for internal clients and discovery.
+  when: elasticsearch_network_mode == 'node_ip'
+
+- name: Wait for Local Path Provisioner rollout before Elasticsearch
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ local_path_namespace }} rollout status deployment/local-path-provisioner --timeout=180s
+  args:
+    executable: /bin/bash
+
+- name: Create Elasticsearch render directory
+  file:
+    path: "{{ __elasticsearch_render_dir }}"
+    state: directory
+    recurse: true
+
+- name: Read nodes carrying the Elasticsearch scheduling label
+  command:
+    argv:
+      - kubectl
+      - get
+      - nodes
+      - -l
+      - "{{ elasticsearch_node_selector_key | default('es-role') }}"
+      - -o
+      - 'jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'
+  register: __elasticsearch_labeled_nodes
+  changed_when: false
+
+- name: Remove Elasticsearch scheduling label from non-target nodes
+  command:
+    argv:
+      - kubectl
+      - label
+      - node
+      - "{{ item }}"
+      - "{{ elasticsearch_node_selector_key | default('es-role') }}-"
+  loop: >-
+    {{
+      (__elasticsearch_labeled_nodes.stdout_lines | default([]))
+      | difference(__elasticsearch_target_node_names)
+    }}
+  loop_control:
+    label: "{{ item }}"
+  register: __elasticsearch_label_removal
+  changed_when:
+    - __elasticsearch_label_removal.rc == 0
+    - "'not labeled' not in (__elasticsearch_label_removal.stdout | default(''))"
+  failed_when:
+    - __elasticsearch_label_removal.rc != 0
+    - >-
+      'not labeled' not in (
+        (__elasticsearch_label_removal.stdout | default(''))
+        ~ (__elasticsearch_label_removal.stderr | default(''))
+      )
+    - >-
+      'label not found' not in (
+        (__elasticsearch_label_removal.stdout | default(''))
+        ~ (__elasticsearch_label_removal.stderr | default(''))
+      )
+
+- name: Label Elasticsearch target nodes
+  command:
+    argv:
+      - kubectl
+      - label
+      - node
+      - "{{ item }}"
+      - >-
+        {{
+          elasticsearch_node_selector_key | default('es-role')
+        }}={{ elasticsearch_node_selector_value | default('all') }}
+      - --overwrite
+  loop: "{{ __elasticsearch_target_node_names }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Render Elasticsearch manifests
+  loop:
+    - namespace.yaml.j2
+    - secrets.yaml.j2
+    - secret-elastic-certs.yaml.j2
+    - elasticsearch-configs.yaml.j2
+    - elasticsearch-log4j2.yaml.j2
+    - jvm-config.yaml.j2
+    - storageclasses.yaml.j2
+    - elasticsearch-services.yaml.j2
+    - elasticsearch-statefulsets.yaml.j2
+    - elasticsearch-post-install-job.yaml.j2
+    - kibana.yaml.j2
+    - elasticsearch-exporter.yaml.j2
+  template:
+    src: "{{ item }}"
+    dest: "{{ __elasticsearch_render_dir }}/{{ item | replace('.j2', '') }}"
+
+- name: Apply Elasticsearch core manifests
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __elasticsearch_render_dir }}/namespace.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/secrets.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/secret-elastic-certs.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-configs.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-log4j2.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/jvm-config.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/storageclasses.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-services.yaml
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-statefulsets.yaml
+  args:
+    executable: /bin/bash
+
+- name: Wait for Elasticsearch StatefulSet rollouts
+  loop: "{{ elasticsearch_node_sets | dict2items }}"
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} rollout status statefulset/elasticsearch-{{ item.key }} --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
+  args:
+    executable: /bin/bash
+  when: item.value.replicas | int > 0
+
+- name: Run Elasticsearch post-install security setup
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} delete job elasticsearch-post-install --ignore-not-found
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-post-install-job.yaml
+    if ! kubectl -n {{ elasticsearch_namespace }} wait --for=condition=complete job/elasticsearch-post-install --timeout={{ elasticsearch_post_install_job_timeout | default('300s') }}; then
+      kubectl -n {{ elasticsearch_namespace }} logs job/elasticsearch-post-install || true
+      kubectl -n {{ elasticsearch_namespace }} describe job elasticsearch-post-install || true
+      exit 1
+    fi
+    kubectl -n {{ elasticsearch_namespace }} logs job/elasticsearch-post-install || true
+  args:
+    executable: /bin/bash
+  when: elasticsearch_kibana.enabled | default(true) | bool
+
+- name: Apply Elasticsearch dependent applications
+  shell: |
+    set -Eeuo pipefail
+    {% if elasticsearch_kibana.enabled | default(true) | bool %}
+    kubectl apply -f {{ __elasticsearch_render_dir }}/kibana.yaml
+    {% endif %}
+    {% if elasticsearch_exporter.enabled | default(true) | bool %}
+    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-exporter.yaml
+    {% endif %}
+  args:
+    executable: /bin/bash
+
+- name: Wait for Kibana rollout
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} rollout status deployment/kibana --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
+  args:
+    executable: /bin/bash
+  when: elasticsearch_kibana.enabled | default(true) | bool
+
+- name: Wait for Elasticsearch exporter rollout
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} rollout status deployment/elasticsearch-exporter --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
+  args:
+    executable: /bin/bash
+  when: elasticsearch_exporter.enabled | default(true) | bool

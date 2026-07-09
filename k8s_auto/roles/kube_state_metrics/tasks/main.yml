@@ -1,0 +1,32 @@
+---
+- name: Check kube-state-metrics images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ service_image_requirements.kube_state_metrics | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - "'kube_state_metrics' in k8s_install_services"
+    - inventory_hostname == groups['k8s-master'][0]
+
+- name: Render kube-state-metrics manifest on bootstrap master
+  template:
+    src: kube-state-metrics.yaml.j2
+    dest: "{{ __bootstrap_dir }}/kube-state-metrics.yaml"
+  when:
+    - "'kube_state_metrics' in k8s_install_services"
+    - inventory_hostname == groups['k8s-master'][0]
+
+- name: Apply kube-state-metrics
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/kube-state-metrics.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'kube_state_metrics' in k8s_install_services"
+    - inventory_hostname == groups['k8s-master'][0]

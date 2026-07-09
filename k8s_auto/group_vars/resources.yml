@@ -1,7 +1,9 @@
 ---
-#---------------------------------------------------
-# Kubernetes workload resource sizing
-#---------------------------------------------------
+#===============================================================================
+# OPTIONAL RESOURCE SIZING
+# Normal installations can keep these defaults. Adjust only workloads that need
+# different requests or limits for the target hardware.
+#===============================================================================
 # Static pod values are applied by roles/k8s_tuning by editing files under
 # /etc/kubernetes/manifests/. Add-on and CNI values are rendered directly into
 # their manifest templates before kubectl apply. Kubeadm-created workloads such

@@ -1,0 +1,131 @@
+---
+- name: Validate Kubernetes inventory topology
+  assert:
+    that:
+      - k8s_master_hosts | length > 0
+      - (k8s_master_hosts | intersect(k8s_worker_hosts) | length) == 0
+      - k8s_cluster_hosts | length == ((k8s_master_hosts | length) + (k8s_worker_hosts | length))
+    fail_msg: >-
+      Inventory must contain at least one k8s-master, and a host cannot belong
+      to both k8s-master and k8s-worker.
+    success_msg: >-
+      Kubernetes inventory contains {{ k8s_master_hosts | length }} master(s)
+      and {{ k8s_worker_hosts | length }} worker(s).
+  run_once: true
+
+- name: Validate required Kubernetes node IP
+  assert:
+    that:
+      - k8s_ip is defined
+      - k8s_ip | string | trim | length > 0
+    fail_msg: >-
+      Host {{ inventory_hostname }} must define k8s_ip in inventory.
+      ansible_host is only used for the Ansible SSH connection.
+    success_msg: >-
+      Host {{ inventory_hostname }} uses ansible_host={{ ansible_host | default(inventory_hostname) }}
+      and k8s_ip={{ k8s_ip }}.
+
+- name: Validate supported primary CNI
+  assert:
+    that:
+      - cni_prime == 'calico'
+      - "'calico' in k8s_install_services"
+    fail_msg: >-
+      This installer currently supports cni_prime: calico only, and the calico
+      service must be enabled.
+  run_once: true
+
+- name: Validate HA service dependencies
+  assert:
+    that:
+      - "'haproxy' in k8s_install_services"
+      - "'keepalived' in k8s_install_services"
+      - >-
+        ('haproxy_exporter' not in k8s_install_services)
+        or ('haproxy' in k8s_install_services)
+      - >-
+        ('keepalived_exporter' not in k8s_install_services)
+        or ('keepalived' in k8s_install_services)
+    fail_msg: >-
+      setup_ha: true requires haproxy and keepalived. Each enabled HA exporter
+      also requires its corresponding host service.
+  when: setup_ha | default(false) | bool
+  run_once: true
+
+- name: Validate secondary CNI dependencies
+  assert:
+    that:
+      - "'multus' in k8s_install_services"
+      - "'whereabouts' in k8s_install_services"
+    fail_msg: >-
+      Enabled macvlan or SR-IOV networking requires both multus and whereabouts.
+  when:
+    - multi_network | default(false) | bool
+    - (multus_macvlan | default(false) | bool) or (multus_sriov | default(false) | bool)
+  run_once: true
+
+- name: Validate IP pools exporter dependencies
+  assert:
+    that:
+      - multi_network | default(false) | bool
+      - multus_sriov | default(false) | bool
+      - "'multus' in k8s_install_services"
+      - "'whereabouts' in k8s_install_services"
+    fail_msg: >-
+      ip_pools_exporter requires multi_network, multus_sriov, multus, and
+      whereabouts to be enabled.
+  when: "'ip_pools_exporter' in k8s_install_services"
+  run_once: true
+
+- name: Validate Elasticsearch service dependencies
+  assert:
+    that:
+      - "'local_path_provisioner' in k8s_install_extra_services"
+      - >-
+        (
+          elasticsearch_target_groups
+          | default([])
+          | difference(groups.keys() | list)
+          | length
+        ) == 0
+      - >-
+        (
+          elasticsearch_target_nodes
+          | default([])
+          | difference(k8s_cluster_hosts)
+          | length
+        ) == 0
+      - elasticsearch_target_hosts | length > 0
+      - elasticsearch_network_mode in ['node_ip', 'interface']
+      - >-
+        (elasticsearch_target_hosts | intersect(k8s_master_hosts) | length == 0)
+        or (master_hybrid | default(false) | bool)
+    fail_msg: >-
+      Elasticsearch requires local_path_provisioner and at least one valid
+      target from k8s-master/k8s-worker. Unknown groups or inventory hosts are
+      not accepted. elasticsearch_network_mode must be node_ip or interface.
+      When target nodes include a master, master_hybrid must be true so
+      Elasticsearch pods can be scheduled there.
+  when: "'elasticsearch' in k8s_install_extra_services"
+  run_once: true
+
+- name: Show effective Kubernetes installation summary
+  debug:
+    msg: "{{ lookup('template', 'install-summary.txt.j2').splitlines() }}"
+  run_once: true
+
+- name: Set global bootstrap runtime facts
+  set_fact:
+    __session_time: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
+
+- name: Create global bootstrap log directory
+  file:
+    path: "{{ __bootstrap_dir }}/logs"
+    state: directory
+    recurse: true
+
+- name: Record global bootstrap session timestamp
+  copy:
+    dest: "{{ __bootstrap_dir }}/logs/latest_session_time"
+    content: "{{ __session_time }}\n"
+    mode: "0644"

@@ -1,0 +1,57 @@
+---
+- name: Check if HAProxy is installed
+  command: haproxy -v
+  register: haproxy_installed
+  ignore_errors: yes
+
+- name: Install required packages
+  yum:
+    name: haproxy
+    state: present
+  when: haproxy_installed.rc != 0
+
+- name: Ensure net.ipv4.ip_nonlocal_bind is set in /etc/sysctl.conf
+  lineinfile:
+    path: /etc/sysctl.conf
+    line: 'net.ipv4.ip_nonlocal_bind=1'
+    create: yes
+    state: present
+    validate: '/sbin/sysctl -p %s'
+  
+- name: Apply sysctl changes
+  command: sysctl -p
+
+- name: Configure New HAProxy
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+  when: haproxy_installed.rc != 0
+
+- name: Configure Old HAProxy
+  blockinfile:
+    path: /etc/haproxy/haproxy.cfg
+    marker: "# {mark} HARBOR BLOCK"
+    block: |
+      #---------------------------------------------------------------------
+      # listen: round robin balancing for harbor
+      #---------------------------------------------------------------------
+      listen harbor
+          bind {{harbor_haip}}:{{https_vip_port}} ssl crt /etc/ssl/certs/{{harbor_domain}}.pem
+          option httpchk GET /api/v2.0/health
+          http-check expect rstatus (2|3)[0-9][0-9]|400
+          reqadd X-Forwarded-Proto:\ https
+          balance     roundrobin
+          {% for item in groups['HARBOR'] %}
+          {% if item == primary_harbor_node %}
+          server {{ item }} {{ hostvars[item].ansible_host }}:{{ https_port }} ssl verify none check inter 3000 rise 2 fall 5
+          {% else %}
+          server {{ item }} {{ hostvars[item].ansible_host }}:{{ https_port }} ssl verify none check inter 3000 rise 2 fall 5 backup
+          {% endif %}
+          {% endfor %}
+  when: haproxy_installed.rc == 0
+
+- name: Enable and start haproxy service
+  ansible.builtin.systemd:
+    name: haproxy
+    enabled: yes
+    state: restarted

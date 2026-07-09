@@ -1,0 +1,60 @@
+global
+    log         127.0.0.1 local2
+    chroot      /var/lib/haproxy
+    pidfile     /var/run/haproxy.pid
+    maxconn     4000
+    user        haproxy
+    group       haproxy
+    daemon
+
+    # turn on stats unix socket
+    stats socket /var/lib/haproxy/stats
+
+#---------------------------------------------------------------------
+# common defaults that all the 'listen' and 'backend' sections will
+# use if not designated in their block
+#---------------------------------------------------------------------
+defaults
+    mode                    http
+    log                     global
+    option                  httplog
+    option                  dontlognull
+    option http-server-close
+    option forwardfor       except 127.0.0.0/8
+    option                  redispatch
+    retries                 3
+    timeout http-request    10s
+    timeout queue           1m
+    timeout connect         10s
+    timeout client          1m
+    timeout server          1m
+    timeout http-keep-alive 10s
+    timeout check           10s
+    maxconn                 3000
+
+listen stats
+  bind 0.0.0.0:8995
+  mode http
+  stats enable
+  stats uri /
+  stats refresh 15s
+  stats realm Haproxy\ Stats
+  stats auth cloud:123456a@
+
+
+#---------------------------------------------------------------------
+# listen: round robin balancing for harbor
+#---------------------------------------------------------------------
+listen harbor
+    bind {{harbor_haip}}:{{https_vip_port}} ssl crt /etc/ssl/certs/{{harbor_domain}}.pem
+    option httpchk GET /api/v2.0/health
+    http-check expect rstatus (2|3)[0-9][0-9]|400
+    reqadd X-Forwarded-Proto:\ https
+    balance     roundrobin
+    {% for item in groups['HARBOR'] %}
+    {% if item == primary_harbor_node %}
+    server {{ item }} {{ hostvars[item].ansible_host }}:{{ https_port }} ssl verify none check inter 3000 rise 2 fall 5
+    {% else %}
+    server {{ item }} {{ hostvars[item].ansible_host }}:{{ https_port }} ssl verify none check inter 3000 rise 2 fall 5 backup
+    {% endif %}
+    {% endfor %}

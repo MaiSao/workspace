@@ -1,0 +1,23 @@
+---
+- name: Check if Keepalived is installed
+  command: keepalived -v
+  register: keepalived_installed
+  ignore_errors: yes
+
+- name: Install required packages
+  yum:
+    name: keepalived
+    state: present
+  when: keepalived_installed.rc != 0
+
+- name: Configure Keepalived
+  template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+  when: keepalived_installed.rc != 0
+
+- name: Enable and start keepalived service
+  ansible.builtin.systemd:
+    name: keepalived
+    enabled: yes
+    state: restarted

@@ -1,0 +1,39 @@
+---
+- name: Check SR-IOV images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ cni_option_image_requirements.sriov | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - multi_network | bool
+    - multus_sriov | bool
+    - inventory_hostname == groups['k8s-master'][0]
+
+- name: Render SR-IOV manifests on bootstrap master
+  loop: "{{ sriov_init }}"
+  template:
+    src: "{{ item }}"
+    dest: "{{ __bootstrap_dir }}/{{ item | replace('.j2','') }}"
+  when:
+    - multi_network | bool
+    - multus_sriov | bool
+    - inventory_hostname == groups['k8s-master'][0]
+
+- name: Apply SR-IOV device plugin and network attachments
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply \
+      -f {{ __bootstrap_dir }}/sriov_configMap.yaml \
+      -f {{ __bootstrap_dir }}/sriovdp-daemonsetv3.8.0.yaml \
+      -f {{ __bootstrap_dir }}/whereabouts-nad-sriov-bond.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - multi_network | bool
+    - multus_sriov | bool
+    - inventory_hostname == groups['k8s-master'][0]

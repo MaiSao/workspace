@@ -7,12 +7,12 @@
   failed_when: false
   when:
     - "'keepalived' in k8s_install_services"
-    - "'master' in group_names"
+    - "'k8s-master' in group_names"
     - not (setup_ha | default(true) | bool)
 
 - name: Set Keepalived runtime facts
   set_fact:
-    __keepalived_bootstrap_master: "{{ groups['master'][0] }}"
+    __keepalived_bootstrap_master: "{{ groups['k8s-master'][0] }}"
     __keepalived_vrrp_router_id_setting: "{{ keepalived_vrrp_router_id | default('auto') | string | lower }}"
     __keepalived_vrrp_router_id_state_file: "{{ __bootstrap_dir }}/state/keepalived_vrrp_router_id"
   when:
@@ -24,10 +24,13 @@
       - __keepalived_vrrp_router_id_setting == 'auto' or ((keepalived_vrrp_router_id | string | regex_search('^([1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$')) is not none)
       - (keepalived_vip_prefix | default(24) | int >= 1) and (keepalived_vip_prefix | default(24) | int <= 32)
       - "'/' not in (k8s_master_ip | string)"
+      - (keepalived_priority_base | int) >= (groups['k8s-master'] | length)
+      - (keepalived_priority_base | int) <= 254
     fail_msg: >-
       Invalid Keepalived VRRP settings. keepalived_vrrp_router_id must be
       'auto' or an integer from 1 to 255, keepalived_vip_prefix must be from
-      1 to 32, and k8s_master_ip must be a plain IP without CIDR.
+      1 to 32, k8s_master_ip must be a plain IP without CIDR, and
+      keepalived_priority_base must be from the number of masters through 254.
   run_once: true
   when:
     - "'keepalived' in k8s_install_services"
@@ -83,7 +86,7 @@
 - name: Share generated Keepalived VRRP router ID with master nodes
   set_fact:
     __keepalived_vrrp_router_id: "{{ __keepalived_vrrp_router_id_slurp.content | b64decode | trim | int }}"
-  loop: "{{ groups['master'] }}"
+  loop: "{{ groups['k8s-master'] }}"
   delegate_to: "{{ item }}"
   delegate_facts: true
   run_once: true
@@ -95,7 +98,7 @@
 - name: Share configured Keepalived VRRP router ID with master nodes
   set_fact:
     __keepalived_vrrp_router_id: "{{ keepalived_vrrp_router_id | int }}"
-  loop: "{{ groups['master'] }}"
+  loop: "{{ groups['k8s-master'] }}"
   delegate_to: "{{ item }}"
   delegate_facts: true
   run_once: true
@@ -112,7 +115,7 @@
     fail_msg: "Effective Keepalived VRRP router ID must be from 1 to 255."
   when:
     - "'keepalived' in k8s_install_services"
-    - "'master' in group_names"
+    - "'k8s-master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Install Keepalived package on master nodes
@@ -121,7 +124,7 @@
     state: present
   when:
     - "'keepalived' in k8s_install_services"
-    - "'master' in group_names"
+    - "'k8s-master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Render Keepalived VRRP configuration
@@ -131,7 +134,7 @@
     mode: '0644'
   when:
     - "'keepalived' in k8s_install_services"
-    - "'master' in group_names"
+    - "'k8s-master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Render Keepalived Kubernetes API health check
@@ -141,7 +144,7 @@
     mode: '0755'
   when:
     - "'keepalived' in k8s_install_services"
-    - "'master' in group_names"
+    - "'k8s-master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Start Keepalived VIP service
@@ -151,5 +154,5 @@
     enabled: true
   when:
     - "'keepalived' in k8s_install_services"
-    - "'master' in group_names"
+    - "'k8s-master' in group_names"
     - setup_ha | default(true) | bool

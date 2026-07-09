@@ -1,0 +1,44 @@
+{% for node_set_name, node_set in elasticsearch_node_sets.items() %}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ 'elasticsearch-client-headless' if node_set_name == 'client' else 'elasticsearch-' ~ node_set_name }}
+  namespace: {{ elasticsearch_namespace }}
+spec:
+  clusterIP: None
+  ports:
+    - name: http
+      port: {{ node_set.http_port if elasticsearch_network_mode == 'node_ip' else 9200 }}
+      protocol: TCP
+      targetPort: {{ node_set.http_port if elasticsearch_network_mode == 'node_ip' else 9200 }}
+    - name: transport
+      port: {{ node_set.transport_port if elasticsearch_network_mode == 'node_ip' else 9300 }}
+      protocol: TCP
+      targetPort: {{ node_set.transport_port if elasticsearch_network_mode == 'node_ip' else 9300 }}
+  selector:
+    role: {{ node_set_name }}
+  sessionAffinity: None
+  type: ClusterIP
+---
+{% endfor %}
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-client
+  namespace: {{ elasticsearch_namespace }}
+spec:
+  ports:
+    - name: http
+      nodePort: {{ elasticsearch_client_service.http_node_port }}
+      port: 9200
+      protocol: TCP
+      targetPort: {{ elasticsearch_node_sets.client.http_port if elasticsearch_network_mode == 'node_ip' else 9200 }}
+    - name: transport
+      nodePort: {{ elasticsearch_client_service.transport_node_port }}
+      port: 9300
+      protocol: TCP
+      targetPort: {{ elasticsearch_node_sets.client.transport_port if elasticsearch_network_mode == 'node_ip' else 9300 }}
+  selector:
+    role: client
+  sessionAffinity: None
+  type: NodePort

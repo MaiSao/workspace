@@ -1,0 +1,59 @@
+Kubernetes installation summary
+===============================
+
+Inventory
+  masters    : {{ groups.get('k8s-master', []) | join(', ') }}
+  master IPs : {{ groups.get('k8s-master', []) | map('extract', hostvars, 'k8s_ip') | join(', ') }}
+  workers    : {{ (groups.get('k8s-worker', []) | join(', ')) if (groups.get('k8s-worker', []) | length > 0) else 'none' }}
+  worker IPs : {{ (groups.get('k8s-worker', []) | map('extract', hostvars, 'k8s_ip') | join(', ')) if (groups.get('k8s-worker', []) | length > 0) else 'none' }}
+
+Cluster
+  version : {{ k8s_version }}
+  HA      : {{ setup_ha | default(false) | bool | lower }}
+  API     : {{ (k8s_master_ip ~ ':' ~ ha_apiserver_port) if (setup_ha | default(false) | bool) else (localAPIEndpointAddress ~ ':' ~ localAPIEndpointPort) }}
+  VIP     : {{ (k8s_master_ip ~ '/' ~ (keepalived_vip_prefix | default(24) | string)) if (setup_ha | default(false) | bool) else 'disabled' }}
+  VRRP ID : {{ keepalived_vrrp_router_id | default('auto') }}
+  Priority: {{ (keepalived_priority_base ~ '..' ~ ((keepalived_priority_base | int) - ((groups.get('k8s-master', []) | length) - 1))) if (setup_ha | default(false) | bool) else 'disabled' }}
+
+Feature Switches
+  common_bootstrap_enabled : {{ common_bootstrap_enabled | default(false) | bool | lower }}
+  master_hybrid            : {{ master_hybrid | default(false) | bool | lower }}
+  cni_prime                : {{ cni_prime }}
+  multi_network            : {{ multi_network | default(false) | bool | lower }}
+  multus_macvlan           : {{ multus_macvlan | default(false) | bool | lower }}
+  multus_sriov             : {{ multus_sriov | default(false) | bool | lower }}
+  kubelet_serverTLSBootstrap: {{ kubelet_serverTLSBootstrap | default(false) | bool | lower }}
+
+CNI Options
+  multus       : {{ 'enabled' if ((multi_network | default(false) | bool) and ('multus' in k8s_install_services)) else 'disabled' }}
+  whereabouts  : {{ 'enabled' if ((multi_network | default(false) | bool) and ('whereabouts' in k8s_install_services)) else 'disabled' }}
+  macvlan NADs : {{ 'enabled' if ((multi_network | default(false) | bool) and (multus_macvlan | default(false) | bool)) else 'disabled' }}
+  SR-IOV stack : {{ 'enabled' if ((multi_network | default(false) | bool) and (multus_sriov | default(false) | bool)) else 'disabled' }}
+
+Built-in Services
+{% for service in k8s_services | dict2items if service.value | bool %}
+  - {{ service.key }}
+{% else %}
+  - none
+{% endfor %}
+
+Extra Services
+{% for service in k8s_extra_services | dict2items if service.value | bool %}
+  - {{ service.key }}
+{% else %}
+  - none
+{% endfor %}
+
+Disabled Built-in Services
+{% for service in k8s_services | dict2items if not (service.value | bool) %}
+  - {{ service.key }}
+{% else %}
+  - none
+{% endfor %}
+
+Gated Behavior
+  ha_stack     : {{ 'install enabled HA services/exporters' if ((setup_ha | default(false) | bool) and (('haproxy' in k8s_install_services) or ('keepalived' in k8s_install_services) or ('haproxy_exporter' in k8s_install_services) or ('keepalived_exporter' in k8s_install_services))) else 'skip HA services/exporters' }}
+  multus_stack : {{ 'install enabled Multus/Whereabouts services' if ((multi_network | default(false) | bool) and (('multus' in k8s_install_services) or ('whereabouts' in k8s_install_services))) else 'skip Multus/Whereabouts services' }}
+  macvlan_nads : {{ 'install' if ((multi_network | default(false) | bool) and (multus_macvlan | default(false) | bool)) else 'skip' }}
+  sriov_stack  : {{ 'install' if ((multi_network | default(false) | bool) and (multus_sriov | default(false) | bool)) else 'skip' }}
+  k8s_tuning   : {{ 'run last after extra services' if ('k8s_tuning' in k8s_install_services) else 'disabled' }}

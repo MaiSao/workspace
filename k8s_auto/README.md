@@ -4,7 +4,7 @@ Title: Install Kubernetes guide
 
 ## Overview
 
-This directory contains an Ansible-based Kubernetes installer. The main entry point is `site.yml`, a single play that targets all nodes and lists each split role once. Each role decides what to do from host group membership and the install plan at the top of `group_vars/all.yml`.
+This directory contains an Ansible-based Kubernetes installer. The main entry point is `site.yml`, a single play whose `roles` section defines the complete installation order. Service switches live at the top of `group_vars/services.yml`; role-level conditions decide which hosts perform each task.
 
 Default behavior is still a full install. You only need to change service variables when you want to skip built-in phases or add future extra service roles.
 
@@ -23,15 +23,20 @@ Default behavior is still a full install. You only need to change service variab
 
 ## 3. Prepare Ansible Inventory
 
-The playbook expects a `master` group. Each node must define `k8s_ip`. Root access is required on all Kubernetes nodes.
+The playbook expects `k8s-master` and `k8s-worker` groups. Use a stable inventory alias for each node, set its SSH management address with `ansible_host`, and explicitly set the address used by Kubernetes with `k8s_ip`. These addresses may be on different networks. Root access is required on all Kubernetes nodes.
 
 ```ini
-[master]
-1.255.0.7 priority=5 k8s_ip=1.255.0.7 ansible_ssh_user=root ansible_ssh_pass=myk8snow
+[k8s-master]
+master01 ansible_host=10.10.0.7 k8s_ip=1.255.0.7 ansible_ssh_user=root ansible_ssh_pass=myk8snow
 
-[worker]
-1.255.0.8 k8s_ip=1.255.0.8 ansible_ssh_user=root ansible_ssh_pass=myk8snow
+[k8s-worker]
+worker01 ansible_host=10.10.0.8 k8s_ip=1.255.0.8 ansible_ssh_user=root ansible_ssh_pass=myk8snow
 ```
+
+The order of hosts in `k8s-master` defines Keepalived preference. The first
+master starts at `keepalived_priority_base`; each following master decrements
+by one for any supported master count. Use an odd control-plane count such as
+1, 3, 5, or 7 for etcd quorum.
 
 Place the final inventory at `k8s_auto/inventory.ini`.
 
@@ -39,9 +44,9 @@ Place the final inventory at `k8s_auto/inventory.ini`.
 
 Review these files before running:
 
-- `group_vars/all.yml`: install plan, extra service selection, Kubernetes version, networking, registry, repo, VIP, audit, etcd, containerd, and bootstrap settings.
+- `group_vars/all.yml`: commonly changed cluster, network, HA, registry, repository, path, and bootstrap settings followed by optional Kubernetes defaults.
 - `group_vars/images.yml`: image names and image pull checklists.
-- `group_vars/services.yml`: per-service manifest lists, add-on switches, exporter settings, and extra-service configuration.
+- `group_vars/services.yml`: built-in/extra service switches first, then operator service configuration and advanced template defaults.
 - `group_vars/resources.yml`: resource requests/limits for static pods, CNI, add-ons, CoreDNS, and kube-proxy.
 
 ## 5. Role Layout
@@ -49,79 +54,80 @@ Review these files before running:
 The installer is split by responsibility:
 
 ```text
+roles/cluster_preflight/       summary, runtime facts, and install-plan validation
 roles/common/                 OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap, etcd client tools
 roles/containerd/             containerd package, registry config, crictl, service start
 roles/haproxy/                HAProxy API load balancer
 roles/keepalived/             Keepalived API VIP
 roles/kubeadm/                prepare, init, kubeconfig, join
-roles/services/calico/        Calico primary CNI
-roles/services/multus/        Multus CNI
-roles/services/whereabouts/   Whereabouts IPAM
-roles/services/sriov/         SR-IOV device plugin and NADs
-roles/services/macvlan/       macvlan NADs
-roles/services/coredns/       CoreDNS override and rollout
-roles/services/metrics_server/ metrics-server
-roles/services/kube_state_metrics/ kube-state-metrics
-roles/services/kubelet_csr_approver/ kubelet CSR approver
-roles/services/kyverno/       Kyverno and policies
-roles/services/etcd_jobs/     etcd backup/defrag jobs
-roles/services/cert_exporter/ certificate expiration exporter
-roles/services/ip_pools_exporter/ SR-IOV IP pools exporter
-roles/services/snmp_exporter/ SNMP daemon config and SNMP exporter
-roles/services/snmp_switch_exporter/ SNMP switch exporter
-roles/services/haproxy_exporter/ HAProxy exporter DaemonSet on master nodes
-roles/services/keepalived_exporter/ Keepalived exporter DaemonSet on master nodes
-roles/services/fluentbit/     optional Fluent Bit extra service for cluster, host, and application logs
-roles/services/local_path_provisioner/ optional Rancher local-path storage provisioner
-roles/services/elasticsearch/ optional Elasticsearch, Kibana, and Elasticsearch exporter stack
+roles/calico/        Calico primary CNI
+roles/multus/        Multus CNI
+roles/whereabouts/   Whereabouts IPAM
+roles/sriov/         SR-IOV device plugin and NADs
+roles/macvlan/       macvlan NADs
+roles/coredns/       CoreDNS override and rollout
+roles/metrics_server/ metrics-server
+roles/kube_state_metrics/ kube-state-metrics
+roles/kubelet_csr_approver/ kubelet CSR approver
+roles/kyverno/       Kyverno and policies
+roles/etcd_jobs/     etcd backup/defrag jobs
+roles/cert_exporter/ certificate expiration exporter
+roles/ip_pools_exporter/ SR-IOV IP pools exporter
+roles/snmp_exporter/ SNMP daemon config and SNMP exporter
+roles/snmp_switch_exporter/ SNMP switch exporter
+roles/haproxy_exporter/ HAProxy exporter DaemonSet on master nodes
+roles/keepalived_exporter/ Keepalived exporter DaemonSet on master nodes
+roles/fluentbit/     optional Fluent Bit extra service for cluster, host, and application logs
+roles/local_path_provisioner/ optional Rancher local-path storage provisioner
+roles/elasticsearch/ optional Elasticsearch, Kibana, and Elasticsearch exporter stack
 roles/k8s_tuning/             workload resources and static pod tuning
 ```
 
-`site.yml` includes enabled roles from ordered `k8s_service_plan` in `group_vars/all.yml`. Role-level `when` checks restrict all-node, master-only, first-master, worker join, and optional service work.
+`site.yml` lists every role explicitly in execution order. Each role entry has an enable condition sourced from `k8s_services`, the CNI option switches, or `k8s_extra_services`. Role-level checks further restrict all-node, master-only, bootstrap-master, worker-join, and optional work.
 
-## 6. Service Catalog
+## 6. Service Selection
 
-Built-in services are defined as an ordered enable catalog at the top of `group_vars/all.yml`:
+Built-in and extra services are enabled at the top of `group_vars/services.yml`:
 
 ```yaml
-k8s_service_plan:
-  - phase: network
-    services:
-      - name: calico
-        enabled: true
-        scope: bootstrap_master
-        description: Primary CNI when cni_prime is calico.
-      - name: sriov
-        enabled: false
-        scope: bootstrap_master
-        requires: [multus, whereabouts]
-        description: SR-IOV device plugin and NADs.
+k8s_services:
+  common: true
+  containerd: true
+  kubeadm: true
+  calico: true
+  coredns: true
+  ip_pools_exporter: false
+
+k8s_extra_services:
+  fluentbit: true
+  local_path_provisioner: true
+  elasticsearch: true
 ```
 
-Normal full install runs services where `enabled: true`, in the order phases are listed. To skip or add a service, change its `enabled` value in `group_vars/all.yml`. The `scope` field documents where the role is expected to do work when `site.yml` runs with `hosts: all`.
+Set a value to `true` or `false`; execution order and host placement remain explicit in `site.yml`. Macvlan and SR-IOV remain network feature switches in `group_vars/all.yml`.
 
-Example: run only CoreDNS after the cluster exists by overriding the enabled catalog:
+Example: run only CoreDNS after the cluster exists:
 
 ```shell
 ansible-playbook -i inventory.ini site.yml \
-  -e '{"k8s_service_plan":[{"phase":"addons","services":[{"name":"coredns","enabled":true,"scope":"bootstrap_master"}]}]}'
+  -e '{"k8s_services":{"coredns":true}}'
 ```
 
 Example: update resource values for kubeadm-created workloads after editing `group_vars/resources.yml`:
 
 ```shell
 ansible-playbook -i inventory.ini site.yml \
-  -e '{"k8s_service_plan":[{"phase":"tuning","services":[{"name":"k8s_tuning","enabled":true,"scope":"mixed"}]}]}'
+  -e '{"k8s_services":{"k8s_tuning":true}}'
 ```
 
 Example: run selected exporters after the cluster exists:
 
 ```shell
 ansible-playbook -i inventory.ini site.yml \
-  -e '{"k8s_service_plan":[{"phase":"observability","services":[{"name":"cert_exporter","enabled":true,"scope":"bootstrap_master"},{"name":"snmp_exporter","enabled":true,"scope":"mixed"},{"name":"haproxy_exporter","enabled":true,"scope":"master_nodes"}]}]}'
+  -e '{"k8s_services":{"cert_exporter":true,"snmp_exporter":true,"haproxy_exporter":true}}'
 ```
 
-`requires` is documentation for operators. `ip_pools_exporter` also requires `multus_sriov: true` in its role conditions.
+`ip_pools_exporter` also requires `multus_sriov: true`.
 
 ## 7. Deploy Full Cluster
 
@@ -135,21 +141,13 @@ Warning: bootstrap tasks reset Kubernetes, CNI, kubeconfig, and etcd state on ta
 
 ## 8. Enable Or Disable Extra Services
 
-Extra services are selected at the top of `group_vars/all.yml` and run at the end of `site.yml` on the bootstrap master when `enabled: true`. Fluent Bit, Local Path Provisioner, and Elasticsearch are registered there by default:
+Extra services are selected at the top of `group_vars/services.yml` and run near the end of `site.yml` on the bootstrap master:
 
 ```yaml
-k8s_enabled_extra_services:
-  - name: fluentbit
-    role: services/fluentbit
-    enabled: true
-  - name: local_path_provisioner
-    role: services/local_path_provisioner
-    enabled: true
-  - name: elasticsearch
-    role: services/elasticsearch
-    enabled: true
-    depends_on:
-      - local_path_provisioner
+k8s_extra_services:
+  fluentbit: true
+  local_path_provisioner: true
+  elasticsearch: true
 ```
 
 Run the single playbook from `k8s_auto/`:
@@ -158,7 +156,7 @@ Run the single playbook from `k8s_auto/`:
 ansible-playbook -i inventory.ini site.yml
 ```
 
-For Fluent Bit, adjust the small deployment variable set in `group_vars/services.yml`: namespace, cluster name, Elasticsearch endpoint/credential, host paths, and `fluentbit_profiles`. Native Fluent Bit config templates live under `roles/services/fluentbit/templates/conf/`.
+For Fluent Bit, adjust the small deployment variable set in `group_vars/services.yml`: namespace, cluster name, Elasticsearch endpoint/credential, host paths, and `fluentbit_profiles`. Native Fluent Bit config templates live under `roles/fluentbit/templates/conf/`.
 
 For Local Path Provisioner, adjust `local_path_default_path`, `local_path_storage_class_name`, and related `local_path_*` values in `group_vars/services.yml`.
 
@@ -174,22 +172,20 @@ Elasticsearch depends on Local Path Provisioner for its data and log PVC Storage
 
 ## 9. Add Future Extra Services
 
-Create a new role under `roles/services/`, for example:
+Create a new role under `roles/`, for example:
 
 ```text
-roles/services/k8s_ingress_nginx/
+roles/k8s_ingress_nginx/
   tasks/main.yml
   templates/
   defaults/main.yml
 ```
 
-Add it to `k8s_enabled_extra_services` in `group_vars/all.yml`:
+Add it to `k8s_extra_services` in `group_vars/services.yml`, then list its role explicitly in `site.yml`:
 
 ```yaml
-k8s_enabled_extra_services:
-  - name: ingress_nginx
-    role: services/k8s_ingress_nginx
-    enabled: true
+k8s_extra_services:
+  ingress_nginx: true
 ```
 
 Then run:
@@ -198,8 +194,11 @@ Then run:
 ansible-playbook -i inventory.ini site.yml
 ```
 
-To disable one extra service, set `enabled: false`. To disable all extra services, override the list:
+To disable one extra service, set it to `false`. To disable all extra services:
 
 ```yaml
-k8s_enabled_extra_services: []
+k8s_extra_services:
+  fluentbit: false
+  local_path_provisioner: false
+  elasticsearch: false
 ```

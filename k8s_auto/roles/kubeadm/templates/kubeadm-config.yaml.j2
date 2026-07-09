@@ -18,7 +18,7 @@ featureGates:
 {% endfor %}
 apiServer:
   certSANs:
-{%for host in groups['master']%}
+{%for host in groups['k8s-master']%}
   - {{ hostvars[host]['k8s_ip'] }}
 {% endfor %}
 {% if setup_ha | default(true) | bool %}

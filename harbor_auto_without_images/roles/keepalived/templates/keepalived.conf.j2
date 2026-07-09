@@ -1,0 +1,33 @@
+! /etc/keepalived/keepalived.conf
+! Configuration File for keepalived
+global_defs {
+    router_id LVS_DEVEL
+    enable_script_seurity
+    script_user root
+    vrrp_garp_master_delay 10
+    vrrp_garp_master_repeat 1
+    vrrp_garp_lower_prio_delay 10
+    vrrp_down_timer_adverts [1:100]
+    vrrp_garp_lower_prio_repeat 1
+    vrrp_garp_master_refresh 60
+    vrrp_garp_master_refresh_repeat 2
+    vrrp_garp_interval 0.001
+    vrrp_gna_interval 0.000001
+}
+
+
+vrrp_instance VI_1 {
+    interface {{ keepalived_interface }}
+    state BACKUP
+    virtual_router_id {{ keepalived_virtual_router_id }}
+    priority {{ priority - play_hosts.index(inventory_hostname) }}
+    advert_int 1
+    nopreempt
+    authentication {
+        auth_type PASS
+        auth_pass {{ keepalived_auth_pass }}
+    }
+    virtual_ipaddress {
+        {{ harbor_haip }}/24
+    }
+}

@@ -1,0 +1,34 @@
+mkdir -p {{https_cert_dir}}
+mkdir -p /etc/docker/certs.d/{{ harbor_domain }}:{{ https_vip_port }}
+mkdir -p /etc/docker/certs.d/{{ harbor_haip }}:{{ https_vip_port }}
+mkdir -p /etc/docker/certs.d/{{ harbor_name }}:{{ https_port }}
+mkdir -p /etc/docker/certs.d/{{ harbor_name }}:{{ https_vip_port }}
+
+cp /tmp/harbor/{{ harbor_domain }}.key {{ https_cert_dir }}/{{ harbor_domain }}.key
+cp /tmp/harbor/{{ harbor_domain }}.crt {{ https_cert_dir }}/{{ harbor_domain }}.crt
+
+cp /tmp/harbor/{{ harbor_domain }}.cert /etc/docker/certs.d/{{ harbor_domain }}:{{ https_vip_port }}/
+cp /tmp/harbor/{{ harbor_domain }}.key /etc/docker/certs.d/{{ harbor_domain }}:{{ https_vip_port }}/
+cp /tmp/harbor/ca.crt /etc/docker/certs.d/{{ harbor_domain }}:{{ https_vip_port }}/
+
+cp /tmp/harbor/{{ harbor_domain }}.cert /etc/docker/certs.d/{{ harbor_haip }}:{{ https_vip_port }}/
+cp /tmp/harbor/{{ harbor_domain }}.key /etc/docker/certs.d/{{ harbor_haip }}:{{ https_vip_port }}/
+cp /tmp/harbor/ca.crt /etc/docker/certs.d/{{ harbor_haip }}:{{ https_vip_port }}/
+
+cp /tmp/harbor/{{ harbor_domain }}.cert /etc/docker/certs.d/{{ harbor_name }}:{{ https_port }}/
+cp /tmp/harbor/{{ harbor_domain }}.key /etc/docker/certs.d/{{ harbor_name }}:{{ https_port }}/
+cp /tmp/harbor/ca.crt /etc/docker/certs.d/{{ harbor_name }}:{{ https_port }}/
+
+cp /tmp/harbor/{{ harbor_domain }}.cert /etc/docker/certs.d/{{ harbor_name }}:{{ https_vip_port }}/
+cp /tmp/harbor/{{ harbor_domain }}.key /etc/docker/certs.d/{{ harbor_name }}:{{ https_vip_port }}/
+cp /tmp/harbor/ca.crt /etc/docker/certs.d/{{ harbor_name }}:{{ https_vip_port }}/
+
+
+{% for item in groups['HARBOR'] %}
+mkdir -p /etc/docker/certs.d/{{ hostvars[item].ansible_host }}:{{ https_port }}
+cp /tmp/harbor/{{ harbor_domain }}.cert /etc/docker/certs.d/{{ hostvars[item].ansible_host }}:{{ https_port }}/
+cp /tmp/harbor/{{ harbor_domain }}.key /etc/docker/certs.d/{{ hostvars[item].ansible_host }}:{{ https_port }}/
+cp /tmp/harbor/ca.crt /etc/docker/certs.d/{{ hostvars[item].ansible_host }}:{{ https_port }}/
+{% endfor %}
+
+cp /tmp/harbor/{{ harbor_domain }}.pem /etc/ssl/certs/

@@ -1,8 +1,0 @@
----
-- name: Label Elasticsearch nodes in target group
-  command: >-
-    kubectl label node
-    {{ hostvars[item].ansible_hostname | default(item) | lower }}
-    {{ elasticsearch_node_selector_key | default('es-role') }}={{ elasticsearch_node_label_group.value }}
-    --overwrite
-  loop: "{{ groups[elasticsearch_node_label_group.group] | default([]) }}"

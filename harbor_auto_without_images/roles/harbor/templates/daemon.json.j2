@@ -1,0 +1,11 @@
+{
+    "data-root": "{{ docker_data_root }}",
+    "storage-driver": "overlay2",
+    "insecure-registries" : ["{{ harbor_name }}:{{ https_vip_port }}"],
+    "log-driver": "json-file",
+    "log-opts": {
+        "max-size": "100m",
+        "max-file": "5",
+        "compress": "true"
+    }
+}

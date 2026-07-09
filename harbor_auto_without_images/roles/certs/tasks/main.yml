@@ -1,0 +1,15 @@
+---
+- name: Create the shell script with variables
+  template:
+    src: create_certs.sh.j2
+    dest: /tmp/create_certs.sh
+    mode: '0755'  # Ensure the script is executable
+
+- name: Ensure temp certificate directory exists
+  file:
+    path: "/tmp/harbor"
+    state: directory
+    mode: '0755'
+
+- name: Run the local shell script
+  command: /bin/bash /tmp/create_certs.sh

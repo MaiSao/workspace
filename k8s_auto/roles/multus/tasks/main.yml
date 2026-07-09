@@ -1,0 +1,35 @@
+---
+- name: Check Multus images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ service_image_requirements.multus | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - "'multus' in k8s_install_services"
+    - multi_network | bool
+    - inventory_hostname == groups['k8s-master'][0]
+
+- name: Render Multus manifest on bootstrap master
+  template:
+    src: multus-daemonset_v4.1.3.yaml.j2
+    dest: "{{ __bootstrap_dir }}/multus-daemonset_v4.1.3.yaml"
+  when:
+    - "'multus' in k8s_install_services"
+    - multi_network | bool
+    - inventory_hostname == groups['k8s-master'][0]
+
+- name: Apply Multus CNI
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/multus-daemonset_v4.1.3.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'multus' in k8s_install_services"
+    - multi_network | bool
+    - inventory_hostname == groups['k8s-master'][0]

@@ -5,10 +5,9 @@
 This repository contains an Ansible-based Kubernetes installer under `k8s_auto/`.
 
 - `k8s_auto/site.yml`: main playbook entry point.
-- `k8s_auto/inventory.ini`: target host inventory; define `master` and worker hosts here.
-- `k8s_auto/group_vars/`: operator files: `all.yml` for install plan and cluster/environment settings, `images.yml` for image names and pull lists, `services.yml` for service-specific manifests/settings, and `resources.yml` for requests/limits.
-- `k8s_auto/roles/common/`, `containerd/`, `haproxy/`, `keepalived/`, `kubeadm/`, and `k8s_tuning/`: active base install and post-install roles.
-- `k8s_auto/roles/services/`: active Kubernetes service roles such as Calico, Multus, Whereabouts, SR-IOV, CoreDNS, add-ons, individual exporters, and extra services.
+- `k8s_auto/inventory.ini`: target host inventory; define `k8s-master` and `k8s-worker` hosts here.
+- `k8s_auto/group_vars/`: operator files: `all.yml` for cluster/infrastructure settings, `services.yml` for service switches and configuration, `images.yml` for image names and pull lists, and `resources.yml` for requests/limits.
+- `k8s_auto/roles/`: all orchestration, base, CNI, add-on, exporter, and extra-service roles live directly at this single role level.
 
 There is currently no dedicated test directory.
 
@@ -57,19 +56,19 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 
 ## Change Log For Dynamic Services
 
-- Added the dynamic service catalog and moved the operator-facing install plan to the top of `k8s_auto/group_vars/all.yml`. The default service list now matches service-level roles: common, containerd, haproxy, keepalived, kubeadm, Calico, Multus, Whereabouts, SR-IOV, macvlan, CoreDNS, add-ons, individual exporters, and post-install tuning.
+- Service switches live at the top of `k8s_auto/group_vars/services.yml`; the explicit role list in `site.yml` defines deterministic installation order.
 - Updated `k8s_auto/site.yml` to load `group_vars/services.yml` after the existing image and cluster variables and to run the split roles.
 - Earlier service-gating work in `roles/kubernetes-optimized/tasks/main.yml` was superseded by the split-role `site.yml`; the old unused role has now been removed.
 - Added tags matching service names for easier inspection or manual runs. Normal full install still uses `ansible-playbook -i inventory.ini site.yml` with no tag requirement.
 - Join command generation now lives in the unified `kubeadm` role.
-- To skip or enable a service, change its `enabled` value in ordered `k8s_service_plan` at the top of `group_vars/all.yml`. Each service also has a `scope` field that documents where it runs with `hosts: all`.
-- Extra service selection now lives in `group_vars/all.yml`; detailed extra-service configuration remains in `group_vars/services.yml`.
-- Extra service roles now run from the post-task loop in `site.yml`; `extra-services.yml` was removed so `site.yml` is the single entry point.
+- To skip or enable a service, change its boolean in `k8s_services` or `k8s_extra_services` at the top of `group_vars/services.yml`. Execution order and host guards remain explicit in `site.yml`.
+- Extra service selection and detailed extra-service configuration live in `group_vars/services.yml`.
+- Extra service roles are listed explicitly in `site.yml` with enable and bootstrap-master conditions; `site.yml` remains the single entry point.
 
 ## Change Log For Multi-Role Split
 
-- Split the active install flow into service-level roles: `common`, `containerd`, `haproxy`, `keepalived`, `kubeadm`, `services/calico`, `services/multus`, `services/whereabouts`, `services/sriov`, `services/macvlan`, `services/coredns`, `services/metrics_server`, `services/kube_state_metrics`, `services/kubelet_csr_approver`, `services/kyverno`, `services/etcd_jobs`, individual exporter roles, and `k8s_tuning`.
-- Updated `k8s_auto/site.yml` to a single `hosts: all` play that lists each split role once. Role-level `when` checks restrict first-master, master-only, worker, and optional-service work.
+- Split the active install flow into service-level roles: `common`, `containerd`, `haproxy`, `keepalived`, `kubeadm`, `calico`, `multus`, `whereabouts`, `sriov`, `macvlan`, `coredns`, `metrics_server`, `kube_state_metrics`, `kubelet_csr_approver`, `kyverno`, `etcd_jobs`, individual exporter roles, and `k8s_tuning`.
+- Updated `k8s_auto/site.yml` to a single play for `k8s-master` and `k8s-worker`; every component role is listed explicitly in deterministic order with enable and host guards.
 - Updated `k8s_auto/group_vars/services.yml` service names to match the new roles. Default full install still runs when using `ansible-playbook -i inventory.ini site.yml`.
 - Split the old bootstrap responsibilities into explicit `common` role tasks, `containerd-bootstrap.sh.j2`, `roles/haproxy/templates/haproxy.cfg.j2`, and `roles/keepalived/templates/keepalived.conf.j2`. Destructive common reset tasks run only when `common_bootstrap_enabled: true` and `__rerun_bootstrap` is defined.
 - Moved CNI and add-on manifest rendering into their owning service roles so templates live with the role that applies them. Legacy bundle roles remain in the tree for reference but are no longer called by `site.yml`.
@@ -83,20 +82,20 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 
 ## Change Log For Single-Play Site
 
-- Simplified `k8s_auto/site.yml` to one play named `Install Kubernetes cluster` with `hosts: all`.
-- Listed every active role once so a role cannot be invoked multiple times on the same node by the playbook structure.
+- Simplified `k8s_auto/site.yml` to one play named `Install Kubernetes cluster` targeting `k8s-master` and `k8s-worker`.
+- Kept `site.yml` role-only and listed every enabled component role directly in deterministic order.
 - Added/kept role-level host guards so master-only roles, first-master roles, worker joins, add-ons, and patching run only where intended.
 
 ## Change Log For Kubelet CSR Approver
 
-- Moved kubelet CSR approver into the built-in `services/kubelet_csr_approver` flow.
-- Converted the source manifest from `k8s_extends/kubelet-csr-approver/kubelet-csr-approver.yaml` into `roles/services/kubelet_csr_approver/templates/kubelet-csr-approver.yaml.j2` using `kubelet_csr_approver_image`.
+- Moved kubelet CSR approver into the built-in `kubelet_csr_approver` flow.
+- Converted the source manifest from `k8s_extends/kubelet-csr-approver/kubelet-csr-approver.yaml` into `roles/kubelet_csr_approver/templates/kubelet-csr-approver.yaml.j2` using `kubelet_csr_approver_image`.
 - Added `kubelet_csr_approver_image` to `group_vars/images.yml`.
 - Added `kubelet-csr-approver.yaml.j2` to its own service role, so it runs with `kubelet_csr_approver` in `site.yml`.
 
 ## Change Log For Kyverno
 
-- Added Kyverno v1.14.4 to the built-in `services/kyverno` flow using manifests from `k8s_extends/kyverno/`.
+- Added Kyverno v1.14.4 to the built-in `kyverno` flow using manifests from `k8s_extends/kyverno/`.
 - Converted Kyverno images to variables in `group_vars/images.yml` and Kyverno resources to `group_vars/resources.yml`.
 - Added Kyverno ClusterPolicy templates with Jinja raw blocks so Kyverno expressions are preserved during Ansible rendering.
 
@@ -109,28 +108,28 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 ## Change Log For Exporters
 
 - Split exporter installation into individual service roles: `cert_exporter`, `ip_pools_exporter`, `snmp_exporter`, `snmp_switch_exporter`, `haproxy_exporter`, and `keepalived_exporter`.
-- Exporters are enabled from the `observability` phase in `k8s_service_plan`; host exporter config lives in `group_vars/services.yml`.
+- Exporters are enabled from `k8s_services`; host exporter config lives in `group_vars/services.yml`.
 - SNMP exporter installs and starts `snmpd` on target nodes, then deploys its DaemonSet with `snmp.yml` mounted from `/etc/snmp_exporter`.
 - cert-exporter and snmp-switch-exporter are scheduled only on master/control-plane nodes; ip-pools-exporter is also gated by `multus_sriov: true`.
 - Added optional HAProxy and Keepalived host-service exporters for master nodes, installed from the OS repository and managed with systemd units.
 
 ## Change Log For Fluent Bit
 
-- Added `services/fluentbit` as an extra service role installed by the `site.yml` extra service loop.
-- Converted the source Fluent Bit manifests from `k8s_extends/fluentbitv4.2.2/hla-mano/` into templates while keeping native Fluent Bit `.conf` files under `roles/services/fluentbit/templates/conf/`.
+- Added `fluentbit` as an extra service role installed by the `site.yml` extra service loop.
+- Converted the source Fluent Bit manifests from `k8s_extends/fluentbitv4.2.2/hla-mano/` into templates while keeping native Fluent Bit `.conf` files under `roles/fluentbit/templates/conf/`.
 - Added minimal deployment variables for namespace, cluster name, Elasticsearch endpoint/credential, host paths, and `fluentbit_profiles`.
 - Added `fluentbit_image` and `k8s_resources.fluentbit`; ConfigMap rendering supports profile-based input blocks without YAML-encoding every Fluent Bit directive.
 
 ## Change Log For Local Path Provisioner
 
-- Added `services/local_path_provisioner` as an extra service role installed by the `site.yml` extra service loop.
+- Added `local_path_provisioner` as an extra service role installed by the `site.yml` extra service loop.
 - Converted Rancher local-path-provisioner v0.0.36 into a template with configurable namespace, StorageClass name, default host path, reclaim policy, volume binding mode, and default-class flag.
 - Added `local_path_provisioner_image` and `local_path_helper_image`; both render through the configured registry prefix.
-- Elasticsearch uses this provisioner for its data and log StorageClasses, so keep this extra service enabled and ordered before `services/elasticsearch`.
+- Elasticsearch uses this provisioner for its data and log StorageClasses, so keep this extra service enabled and ordered before `elasticsearch`.
 
 ## Change Log For Elasticsearch
 
-- Added `services/elasticsearch` as an extra service role installed by the `site.yml` extra service loop.
+- Added `elasticsearch` as an extra service role installed by the `site.yml` extra service loop.
 - Converted the `k8s_extends/elasticsearchv8.19` reference stack into templates for Elasticsearch, Kibana, Elasticsearch exporter, storage classes, secrets, and services.
 - Split `elasticsearch.yml` into per-node-set ConfigMaps for master, data, and client while keeping `elasticsearch-log4j2` and `jvm-config` shared.
 - Added default 3/3/3 master/data/client topology with role-specific heap, resources, PVC sizes, and tuning values based on the reference configuration.
@@ -153,11 +152,11 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 - Replaced hardcoded yum/dnf repository blocks with the `os_repositories` list from `group_vars/all.yml`.
 - Reordered kubeadm tasks so additional control-plane nodes join before kubeconfig is distributed to configured master users.
 
-## Change Log For Ordered Service Plan
+## Change Log For Explicit Service Plan
 
-- Replaced the dictionary-style `k8s_service_groups` with ordered `k8s_service_plan` so install order no longer depends on YAML dictionary ordering.
-- Added `scope` metadata for built-in services to document whether work runs on all nodes, master nodes, the bootstrap master, join nodes, or mixed locations under `hosts: all`.
-- Added `site.yml` validation and debug output for effective service order plus service scope-to-role mapping.
+- Service selection uses compact boolean maps in `group_vars/services.yml`.
+- Execution order and host guards are explicit on every role entry in `site.yml`.
+- The installation summary displays enabled and disabled service names from those maps.
 - Replaced the old `common-bootstrap.sh.j2` script with named Ansible tasks inside `roles/common/tasks/main.yml` so reset, hosts, repository, kernel, package, kubelet, NetworkManager, and etcd client tool steps are visible independently.
 - Standardized install/bootstrap script logging for containerd, kubeadm init, kubeadm join, and join-command regeneration. The common role now uses named Ansible tasks instead of a bootstrap script.
 - Script-running tasks now capture stderr with stdout into `/root/kubebootstrap/logs/` and print the last 120 log lines on failure.
@@ -188,8 +187,8 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 ## Change Log For Group Vars Restructure
 
 - Consolidated `k8s_auto/group_vars/` into focused operator files: `all.yml`, `images.yml`, `services.yml`, and `resources.yml`.
-- `all.yml` now starts with the install plan: built-in services, post-install tuning steps, extra services, and the human-readable service catalog.
-- `services.yml` now keeps only service-specific configuration such as manifest lists, CNI inputs, exporter switches, and extra-service settings.
+- `all.yml` starts with commonly changed cluster, network, HA, registry, repository, path, and bootstrap settings; optional Kubernetes defaults and derived values follow.
+- `services.yml` starts with compact built-in and extra-service boolean maps, followed by operator configuration and advanced manifest defaults.
 - Replaced `image_file.yml` with `images.yml`; image variables and pull lists now live there.
 - Moved manifest template lists into `services.yml`; resource values now live in `resources.yml`.
 - Removed the old `master.yml`; its resource values now live in `services.yml`.

@@ -8,7 +8,7 @@ backend apiserver
     mode tcp
     option tcp-check
     balance roundrobin
-{% for host in groups['master'] %}
+{% for host in groups['k8s-master'] %}
 {% set backup_flag = ' backup' if host != inventory_hostname else '' %}
-    server {{ hostvars[host]['ansible_hostname'] | default(host) }} {{ hostvars[host]['k8s_ip'] | default(host) }}:{{ localAPIEndpointPort }} check fall 2 rise 3 inter 2s{{ backup_flag }}
+    server {{ hostvars[host]['ansible_hostname'] | default(host) }} {{ hostvars[host]['k8s_ip'] }}:{{ localAPIEndpointPort }} check fall 2 rise 3 inter 2s{{ backup_flag }}
 {% endfor %}

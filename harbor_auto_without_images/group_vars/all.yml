@@ -1,0 +1,87 @@
+# =============================================================================
+# Certificate configuration
+# Certificates are generated on primary_harbor_node and copied to all nodes.
+# =============================================================================
+
+# Certificate validity period, in days.
+cert_expired_days: 36500
+
+# DNS name included in the certificate and used to access Harbor through the VIP.
+harbor_domain: "harbor.vht.viettel.com.vn"
+
+# Internal registry name added to Docker certificate directories.
+harbor_name: "harbor-registry"
+
+# =============================================================================
+# High availability configuration
+# Set setup_ha to true to install HAProxy, Keepalived, and replication policies.
+# =============================================================================
+
+setup_ha: false
+
+# Virtual IP shared by Keepalived. It must be unused and in the nodes' subnet.
+harbor_haip: "172.20.3.155"
+
+# HTTPS port exposed by HAProxy on the virtual IP.
+https_vip_port: 8018
+
+# Network interface on which Keepalived will advertise the virtual IP.
+keepalived_interface: "eth0"
+
+# VRRP ID must be identical on Harbor nodes and unique in the local network.
+keepalived_virtual_router_id: "112"
+
+# Keepalived VRRP authentication password.
+keepalived_auth_pass: "123456a@"
+
+# =============================================================================
+# Harbor configuration
+# =============================================================================
+
+# Ports on which each Harbor node listens directly.
+http_port: 8016
+https_port: 8017
+
+# Directory used for Harbor server certificates on each node.
+https_cert_dir: "/etc/ssl/certs/harbor"
+
+# Public projects created through the Harbor API after installation.
+public_projects:
+  - goharbor
+  - k8s.gcr.io
+  - mda
+  - calico
+  - bitnami
+  - dougbtv
+  - k8snetworkplumbingwg
+  - busybox
+  - fluent
+  - docker
+  - prom
+  - mongo
+  - ghcr.io
+  - vht
+  - registry.k8s.io
+  - nginx
+  - efk
+  - kubernetesui
+  - kyverno
+  - tools
+
+# Harbor application settings and storage paths.
+harbor_version: "2.14.0"
+harbor_install_dir: "/opt/harbor"
+harbor_data_volume: "/u01/harbor"
+
+# Harbor and internal database credentials.
+# Replace these defaults before installing a real environment.
+harbor_user: "admin"
+harbor_password: "Harbor12345"
+database_password: "dbpassword"
+
+# Docker data-root configured on every Harbor node.
+docker_data_root: "/u01/docker"
+
+# Ansible inventory alias of the node that generates certificates.
+# This value must be a member of the HARBOR inventory group.
+primary_harbor_node: "harbor01"

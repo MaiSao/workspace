@@ -1,103 +1,135 @@
 ---
 - name: Install Kubernetes cluster
-  hosts: all
-  gather_facts: yes
+  hosts: k8s-master, k8s-worker
+  gather_facts: true
   vars_files:
     - group_vars/all.yml
     - group_vars/images.yml
     - group_vars/services.yml
     - group_vars/resources.yml
-  tasks:
-    - name: Show effective Kubernetes installation summary
-      debug:
-        msg: "{{ lookup('template', 'templates/install-summary.txt.j2').splitlines() }}"
-      run_once: true
-      tags: always
+  roles:
+    # Preflight
+    - role: cluster_preflight
+      tags: [always, preflight]
 
-    - name: Set global bootstrap runtime facts
-      set_fact:
-        __session_time: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}"
-      tags: always
+    # Base
+    - role: common
+      when: "'common' in k8s_install_services"
+      tags: [common]
 
-    - name: Create global bootstrap log directory
-      file:
-        path: "{{ __bootstrap_dir }}/logs"
-        state: directory
-        recurse: yes
-      tags: always
+    - role: containerd
+      when: "'containerd' in k8s_install_services"
+      tags: [containerd]
 
-    - name: Record global bootstrap session timestamp
-      shell: |
-        set -Eeuo pipefail
-        echo {{ __session_time }} > {{ __bootstrap_dir }}/logs/latest_session_time
-      args:
-        executable: /bin/bash
-      tags: always
+    # HA
+    - role: haproxy
+      when: "'haproxy' in k8s_install_services"
+      tags: [haproxy]
 
-    - name: Validate enabled Kubernetes services have role mappings
-      assert:
-        that:
-          - (k8s_install_services | difference(k8s_service_roles.keys() | list)) | length == 0
-        fail_msg: "Missing role mapping for enabled services: {{ k8s_install_services | difference(k8s_service_roles.keys() | list) }}"
-        success_msg: "All enabled Kubernetes services have role mappings."
-      run_once: true
-      tags: always
+    - role: keepalived
+      when: "'keepalived' in k8s_install_services"
+      tags: [keepalived]
 
-    - name: Validate enabled Kubernetes services have supported scopes
-      assert:
-        that:
-          - (k8s_install_service_details | selectattr('scope', 'undefined') | list | length) == 0
-          - (k8s_install_service_details | map(attribute='scope') | list | difference(k8s_valid_service_scopes)) | length == 0
-        fail_msg: "Invalid or missing scope in enabled services. Supported scopes: {{ k8s_valid_service_scopes }}"
-        success_msg: "All enabled Kubernetes services have supported scopes."
-      run_once: true
-      tags: always
+    # Cluster bootstrap
+    - role: kubeadm
+      when: "'kubeadm' in k8s_install_services"
+      tags: [kubeadm]
 
-    - name: Run enabled Kubernetes services
-      include_tasks:
-        file: tasks/run-k8s-service-role.yml
-        apply:
-          tags: always
-      loop: "{{ k8s_install_services | reject('equalto', 'k8s_tuning') | list }}"
-      loop_control:
-        loop_var: k8s_service_name
-        label: "{{ k8s_service_name }}"
-      tags: always
+    # Primary and secondary CNI
+    - role: calico
+      when: "'calico' in k8s_install_services"
+      tags: [calico]
 
-    - name: Install enabled CNI option services
-      include_tasks:
-        file: tasks/run-cni-option-role.yml
-        apply:
-          tags: always
-      loop:
-        - name: sriov
-          role: services/sriov
-          enabled: "{{ multi_network | bool and multus_sriov | bool }}"
-        - name: macvlan
-          role: services/macvlan
-          enabled: "{{ multi_network | bool and multus_macvlan | bool }}"
-      loop_control:
-        loop_var: k8s_cni_option
-        label: "{{ k8s_cni_option.name }}"
-      when: k8s_cni_option.enabled | bool
-      tags: always
+    - role: multus
+      when: "'multus' in k8s_install_services"
+      tags: [multus]
 
-    - name: Install enabled extra service roles
-      include_tasks:
-        file: tasks/run-extra-service-role.yml
-        apply:
-          tags: extra_services
-      loop: "{{ k8s_enabled_extra_services }}"
-      loop_control:
-        loop_var: k8s_extra_service
-        label: "{{ k8s_extra_service.name }}"
+    - role: whereabouts
+      when: "'whereabouts' in k8s_install_services"
+      tags: [whereabouts]
+
+    - role: sriov
       when:
-        - inventory_hostname == groups['master'][0]
-        - k8s_extra_service.enabled | default(true) | bool
-      tags: extra_services
+        - multi_network | bool
+        - multus_sriov | bool
+      tags: [sriov]
 
-    - name: Run post-install Kubernetes tuning
-      include_role:
-        name: k8s_tuning
+    - role: macvlan
+      when:
+        - multi_network | bool
+        - multus_macvlan | bool
+      tags: [macvlan]
+
+    # Cluster add-ons
+    - role: coredns
+      when: "'coredns' in k8s_install_services"
+      tags: [coredns]
+
+    - role: metrics_server
+      when: "'metrics_server' in k8s_install_services"
+      tags: [metrics_server]
+
+    - role: kube_state_metrics
+      when: "'kube_state_metrics' in k8s_install_services"
+      tags: [kube_state_metrics]
+
+    - role: kubelet_csr_approver
+      when: "'kubelet_csr_approver' in k8s_install_services"
+      tags: [kubelet_csr_approver]
+
+    - role: kyverno
+      when: "'kyverno' in k8s_install_services"
+      tags: [kyverno]
+
+    - role: etcd_jobs
+      when: "'etcd_jobs' in k8s_install_services"
+      tags: [etcd_jobs]
+
+    # Observability
+    - role: cert_exporter
+      when: "'cert_exporter' in k8s_install_services"
+      tags: [cert_exporter]
+
+    - role: snmp_exporter
+      when: "'snmp_exporter' in k8s_install_services"
+      tags: [snmp_exporter]
+
+    - role: snmp_switch_exporter
+      when: "'snmp_switch_exporter' in k8s_install_services"
+      tags: [snmp_switch_exporter]
+
+    - role: haproxy_exporter
+      when: "'haproxy_exporter' in k8s_install_services"
+      tags: [haproxy_exporter]
+
+    - role: keepalived_exporter
+      when: "'keepalived_exporter' in k8s_install_services"
+      tags: [keepalived_exporter]
+
+    - role: ip_pools_exporter
+      when: "'ip_pools_exporter' in k8s_install_services"
+      tags: [ip_pools_exporter]
+
+    # Extra services
+    - role: fluentbit
+      when:
+        - "'fluentbit' in k8s_install_extra_services"
+        - inventory_hostname == groups['k8s-master'][0]
+      tags: [extra_services, fluentbit]
+
+    - role: local_path_provisioner
+      when:
+        - "'local_path_provisioner' in k8s_install_extra_services"
+        - inventory_hostname == groups['k8s-master'][0]
+      tags: [extra_services, local_path_provisioner]
+
+    - role: elasticsearch
+      when:
+        - "'elasticsearch' in k8s_install_extra_services"
+        - inventory_hostname == groups['k8s-master'][0]
+      tags: [extra_services, elasticsearch]
+
+    # Post-install tuning must run last.
+    - role: k8s_tuning
       when: "'k8s_tuning' in k8s_install_services"
-      tags: always
+      tags: [tuning]

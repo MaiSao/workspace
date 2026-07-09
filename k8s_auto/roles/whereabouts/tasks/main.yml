@@ -1,0 +1,39 @@
+---
+- name: Check Whereabouts images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ service_image_requirements.whereabouts | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - "'whereabouts' in k8s_install_services"
+    - multi_network | bool
+    - inventory_hostname == groups['k8s-master'][0]
+
+- name: Render Whereabouts manifests on bootstrap master
+  loop: "{{ whereabouts_init }}"
+  template:
+    src: "{{ item }}"
+    dest: "{{ __bootstrap_dir }}/{{ item | replace('.j2','') }}"
+  when:
+    - "'whereabouts' in k8s_install_services"
+    - multi_network | bool
+    - inventory_hostname == groups['k8s-master'][0]
+
+- name: Apply Whereabouts IPAM
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply \
+      -f {{ __bootstrap_dir }}/whereabouts_ippools.yaml \
+      -f {{ __bootstrap_dir }}/whereabouts_ippools-cleaner.yaml \
+      -f {{ __bootstrap_dir }}/whereabouts_daemonset_install.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'whereabouts' in k8s_install_services"
+    - multi_network | bool
+    - inventory_hostname == groups['k8s-master'][0]

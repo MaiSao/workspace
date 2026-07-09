@@ -1,0 +1,216 @@
+{% for node_set_name, node_set in elasticsearch_node_sets.items() %}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch-{{ node_set_name }}
+  namespace: {{ elasticsearch_namespace }}
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: {{ node_set.replicas }}
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      es-environment: {{ elasticsearch_environment_label }}
+      role: {{ node_set_name }}
+  serviceName: {{ 'elasticsearch-client-headless' if node_set_name == 'client' else 'elasticsearch-' ~ node_set_name }}
+  template:
+    metadata:
+      labels:
+        es-environment: {{ elasticsearch_environment_label }}
+        role: {{ node_set_name }}
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: {{ elasticsearch_node_selector_key | default('es-role') }}
+                    operator: In
+                    values:
+                      - {{ node_set.node_selector_role }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  role: {{ node_set_name }}
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - name: elasticsearch
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ elasticsearch_image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.hostIP
+            - name: NODE_ROLES
+              value: {{ node_set.roles }}
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-basic-auth
+            - name: ES_JAVA_OPTS
+              value: {{ node_set.java_opts }}
+          ports:
+            - containerPort: {{ node_set.http_port if elasticsearch_network_mode == 'node_ip' else 9200 }}
+              name: http
+              protocol: TCP
+            - containerPort: {{ node_set.transport_port if elasticsearch_network_mode == 'node_ip' else 9300 }}
+              name: transport
+              protocol: TCP
+          resources:
+{{ node_set.resources | to_nice_yaml(indent=2) | indent(12, true) }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /usr/share/elasticsearch/config
+              name: config-writable
+            - mountPath: /tmp
+              name: tmp
+            - mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+              name: config
+              readOnly: true
+              subPath: elasticsearch.yml
+            - mountPath: /usr/share/elasticsearch/config/log4j2.properties
+              name: log4j2
+              readOnly: true
+              subPath: log4j2.properties
+            - mountPath: /usr/share/elasticsearch/config/jvm.options
+              name: jvm-config
+              readOnly: true
+              subPath: jvm.options
+            - mountPath: /usr/share/elasticsearch/config/certs
+              name: certs
+            - mountPath: /usr/share/elasticsearch/data
+              name: data
+            - mountPath: /usr/share/elasticsearch/logs
+              name: log
+      dnsPolicy: {{ 'ClusterFirstWithHostNet' if elasticsearch_network_mode == 'node_ip' else 'ClusterFirst' }}
+      hostNetwork: {{ (elasticsearch_network_mode == 'node_ip') | lower }}
+      initContainers:
+        - name: sysctl
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ elasticsearch_sysctl_image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          command:
+            - sh
+            - -c
+            - |
+              sysctl -w vm.max_map_count=262144
+              sysctl -w fs.file-max=50000000
+          resources:
+{{ elasticsearch_init_container_resources | to_nice_yaml(indent=2) | indent(12, true) }}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+        - name: copy-config
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ elasticsearch_image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - cp -r /usr/share/elasticsearch/config/. /config-dest/
+          resources:
+{{ elasticsearch_init_container_resources | to_nice_yaml(indent=2) | indent(12, true) }}
+          securityContext:
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /config-dest
+              name: config-writable
+        - name: chown-data
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ elasticsearch_busybox_image }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - chown -R 1000:1000 /usr/share/elasticsearch/data; chown -R 1000:1000 /usr/share/elasticsearch/logs; chown -R 1000:1000 /usr/share/elasticsearch/config;
+          resources:
+{{ elasticsearch_init_container_resources | to_nice_yaml(indent=2) | indent(12, true) }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsUser: 0
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /usr/share/elasticsearch/data
+              name: data
+            - mountPath: /usr/share/elasticsearch/logs
+              name: log
+            - mountPath: /usr/share/elasticsearch/config
+              name: config-writable
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsUser: 1000
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - emptyDir: {}
+          name: config-writable
+        - emptyDir: {}
+          name: tmp
+        - configMap:
+            defaultMode: 420
+            name: elasticsearch-log4j2
+          name: log4j2
+        - configMap:
+            defaultMode: 420
+            name: jvm-config
+          name: jvm-config
+        - configMap:
+            defaultMode: 420
+            name: elasticsearch-{{ node_set_name }}-config
+          name: config
+        - name: certs
+          secret:
+            defaultMode: 420
+            secretName: elastic-certs
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ node_set.data_storage }}
+        storageClassName: {{ elasticsearch_storage_classes.data.name }}
+        volumeMode: Filesystem
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: log
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ node_set.log_storage }}
+        storageClassName: {{ elasticsearch_storage_classes.log.name }}
+        volumeMode: Filesystem
+{% if not loop.last %}
+---
+{% endif %}
+{% endfor %}

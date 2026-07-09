@@ -1,0 +1,113 @@
+---
+- name: Create replication endpoints
+  uri:
+    url: "https://{{ ansible_host }}:{{ https_port }}/api/v2.0/registries"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Basic {{ (harbor_user + ':' + harbor_password) | b64encode }}"
+    force_basic_auth: yes
+    body_format: json
+    body:
+      credential:
+        access_key: "{{ harbor_user }}"
+        access_secret: "{{ harbor_password }}"
+        type: "basic"
+      name: "harbor{{ item }}"
+      url: "https://{{ hostvars[item].ansible_host }}:{{ https_port }}"
+      insecure: true
+      type: "harbor"
+      description: "harbor {{ item }}"
+    validate_certs: no
+    status_code: 201
+  ignore_errors: no
+  with_items: "{{ groups['HARBOR'] | difference([inventory_hostname]) }}"
+  register: registries
+  when: setup_ha == true
+
+- name: Save node registry id to query
+  set_fact:
+    node_registry_ids: >-
+      {{
+        node_registry_ids | default([]) +
+        [
+            { 'node': item.item, 'id': item.location.split('/')[-1] }
+        ]
+      }}
+  loop: "{{ registries.results }}"
+  when: setup_ha == true
+
+- name: Create replication rule auto push
+  uri:
+    url: "https://{{ ansible_host }}:{{ https_port }}/api/v2.0/replication/policies"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Basic {{ (harbor_user + ':' + harbor_password) | b64encode }}"
+    force_basic_auth: yes
+    body_format: json
+    body:
+      '{
+        "name": "auto-push-harbor-{{item.node}}",
+        "description": "auto-push-harbor-{{item.node}}",
+        "replicate_deletion": true,
+        "dest_registry":{"id": {{  item.id | int }}},
+        "enabled": true,
+        "trigger":{ "type": "event_based" },
+        "deletion": true,
+        "override": true
+      }'
+    validate_certs: no
+    status_code: 201
+  ignore_errors: no
+  loop: "{{ node_registry_ids }}"
+  when: setup_ha == true
+
+- name: Create replication rule scheduler pull
+  uri:
+    url: "https://{{ ansible_host }}:{{ https_port }}/api/v2.0/replication/policies"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Basic {{ (harbor_user + ':' + harbor_password) | b64encode }}"
+    force_basic_auth: yes
+    body_format: json
+    body:
+      '{
+        "name": "scheduler-pull-harbor-{{item.node}}",
+        "description": "scheduler-pull-harbor-{{item.node}}",
+        "replicate_deletion": true,
+        "src_registry": { "id": {{ item.id | int}} },
+        "enabled": true,
+        "trigger":
+          {
+            "type": "scheduled",
+            "trigger_settings": { "cron": "0 0 0 * * 0"}
+          },  
+        "deletion": true,
+        "override": true
+      }'
+    validate_certs: no
+    status_code: 201
+  ignore_errors: no
+  loop: "{{ node_registry_ids }}"
+  when: setup_ha == true
+
+- name: Create public projects
+  uri:
+    url: "https://{{ ansible_host }}:{{ https_port }}/api/v2.0/projects"
+    method: POST
+    headers:
+      Content-Type: "application/json"
+      Authorization: "Basic {{ (harbor_user + ':' + harbor_password) | b64encode }}"
+    force_basic_auth: yes
+    body_format: json
+    body:
+      '{ 
+        "project_name": "{{ item }}",
+        "public": true
+      }'
+    validate_certs: no
+    status_code: 201
+  ignore_errors: no
+  loop: "{{ public_projects }}"

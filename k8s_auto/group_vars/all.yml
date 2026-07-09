@@ -1,224 +1,128 @@
-#---------------------------------------------------
-# Install plan - service enable catalog
-#---------------------------------------------------
-# Open this section first before every install. It shows every supported built-in
-# service in deterministic phase order. Toggle enabled: true/false to choose
-# what runs. Scope documents where each role is expected to do work when
-# site.yml runs with hosts: all; role-level when conditions enforce it.
-#
-# Full cluster install:
-#   ansible-playbook -i inventory.ini site.yml
-#
-# Extra services run at the end of site.yml when enabled below.
-#---------------------------------------------------
-
-common_bootstrap_enabled: true
-
-k8s_valid_service_scopes:
-  - all_nodes
-  - master_nodes
-  - bootstrap_master
-  - join_nodes
-  - mixed
-
-k8s_service_plan:
-  - phase: base
-    description: Node bootstrap services.
-    services:
-      - name: common
-        enabled: true
-        scope: mixed
-        description: OS repo, packages, kernel modules, sysctl, hosts, kubelet bootstrap config, and master-only etcd client tools.
-      - name: containerd
-        enabled: true
-        scope: all_nodes
-        description: Container runtime package, registry config, crictl config, and service start.
-
-  - phase: ha
-    description: Kubernetes API HA host services.
-    services:
-      - name: haproxy
-        enabled: true
-        scope: master_nodes
-        description: Kubernetes API load balancer on master nodes when setup_ha is true.
-      - name: keepalived
-        enabled: true
-        scope: master_nodes
-        requires: [haproxy]
-        description: Kubernetes API VIP and health check on master nodes when setup_ha is true.
-
-  - phase: cluster
-    description: kubeadm cluster bootstrap and join flow.
-    services:
-      - name: kubeadm
-        enabled: true
-        scope: mixed
-        requires: [common, containerd]
-        description: Audit policy, kubeadm config, init, join command generation, node join, and kubeconfig distribution. Uses HAProxy/Keepalived endpoint only when setup_ha is true.
-
-  - phase: network
-    description: Cluster networking and NetworkAttachmentDefinitions.
-    services:
-      - name: calico
-        enabled: true
-        scope: bootstrap_master
-        description: Primary CNI when cni_prime is calico.
-      - name: multus
-        enabled: true
-        scope: bootstrap_master
-        description: Multi-network CNI.
-      - name: whereabouts
-        enabled: true
-        scope: bootstrap_master
-        requires: [multus]
-        description: IPAM for secondary networks.
-
-  - phase: addons
-    description: Kubernetes cluster add-ons applied from the bootstrap master.
-    services:
-      - name: coredns
-        enabled: true
-        scope: bootstrap_master
-        description: CoreDNS override manifest and rollout restart.
-      - name: metrics_server
-        enabled: true
-        scope: bootstrap_master
-        description: Kubernetes metrics-server.
-      - name: kube_state_metrics
-        enabled: true
-        scope: bootstrap_master
-        description: kube-state-metrics.
-      - name: kubelet_csr_approver
-        enabled: true
-        scope: bootstrap_master
-        description: kubelet serving certificate approver.
-      - name: kyverno
-        enabled: true
-        scope: bootstrap_master
-        description: Kyverno admission controller and baseline policies.
-      - name: etcd_jobs
-        enabled: true
-        scope: bootstrap_master
-        description: etcd backup rotation and defrag jobs.
-
-  - phase: observability
-    description: Exporters and observability services.
-    services:
-      - name: cert_exporter
-        enabled: true
-        scope: bootstrap_master
-        description: Certificate expiration exporter.
-      - name: snmp_exporter
-        enabled: true
-        scope: mixed
-        description: Installs snmpd on all nodes and deploys SNMP exporter from the bootstrap master.
-      - name: snmp_switch_exporter
-        enabled: true
-        scope: bootstrap_master
-        description: SNMP switch exporter scheduled on master nodes.
-      - name: haproxy_exporter
-        enabled: true
-        scope: master_nodes
-        requires: [haproxy]
-        description: HAProxy exporter DaemonSet scheduled on master nodes.
-      - name: keepalived_exporter
-        enabled: true
-        scope: master_nodes
-        requires: [keepalived]
-        description: Keepalived exporter DaemonSet scheduled on master nodes.
-      - name: ip_pools_exporter
-        enabled: false
-        scope: bootstrap_master
-        requires: [sriov]
-        description: SR-IOV IP pools exporter.
-
-  - phase: tuning
-    description: Post-install resource and static pod tuning.
-    services:
-      - name: k8s_tuning
-        enabled: true
-        scope: mixed
-        description: Resource tuning for kubeadm-created workloads and static pod manifest patching; site.yml runs it after extra services.
-
-k8s_install_service_details: >-
-  {{
-    k8s_service_plan
-    | map(attribute='services')
-    | flatten
-    | selectattr('enabled', 'equalto', true)
-    | list
-  }}
-
-k8s_install_services: >-
-  {{
-    k8s_install_service_details
-    | selectattr('enabled', 'equalto', true)
-    | map(attribute='name')
-    | list
-  }}
-
-# Extra services run at the end of site.yml on the bootstrap master when
-# enabled. Keep local_path_provisioner before elasticsearch because
-# Elasticsearch PVCs depend on it.
-k8s_enabled_extra_services:
-  - name: fluentbit
-    role: services/fluentbit
-    scope: bootstrap_master
-    enabled: true
-  - name: local_path_provisioner
-    role: services/local_path_provisioner
-    scope: bootstrap_master
-    enabled: true
-  - name: elasticsearch
-    role: services/elasticsearch
-    scope: bootstrap_master
-    enabled: true
-    depends_on:
-      - local_path_provisioner
+#===============================================================================
+# OPERATOR SETTINGS
+# Review this section before every installation.
+# Each inventory host must define k8s_ip explicitly; ansible_host is only the
+# SSH management address and may use a different network.
+#===============================================================================
 
 #---------------------------------------------------
-# Kubernetes version and kubeadm defaults
+# Cluster identity
 #---------------------------------------------------
-# Kubernetes version to install. Keep the leading "v" because image tags and
-# kubeadm config use this value directly.
 k8s_version: v1.31.4
+clusterName: kubernetes
+networking_dnsDomain: cluster.local
 
-# Pod sandbox image used by containerd CRI. Keep this aligned with Kubernetes
-# version expectations and with the image mirrored in your private registry.
-containerd_sandbox_image: 'registry.k8s.io/pause:3.10'
+# Allow workloads to run on control-plane nodes after all masters have joined.
+master_hybrid: true
 
-# CRI socket used by kubeadm, kubelet, and crictl. Change only if using a
-# different CRI endpoint.
+#---------------------------------------------------
+# Cluster networking
+#---------------------------------------------------
+networking_podSubnet: 192.168.0.0/16
+networking_serviceSubnet: 10.96.0.0/12
+ip_autodetection_method_cidr: 172.20.3.0/24
+
+# Primary and optional secondary CNI features.
+cni_prime: calico
+multi_network: true
+multus_macvlan: true
+multus_sriov: false
+
+#---------------------------------------------------
+# Kubernetes API high availability
+#---------------------------------------------------
+# false skips HAProxy, Keepalived, and their exporters.
+setup_ha: true
+k8s_master_ip: 172.20.3.155
+ha_apiserver_port: 8443
+interface_k8s: eth0
+
+# Keepalived values shared by every control-plane node.
+keepalived_auth_pass: "3333"
+keepalived_vip_prefix: 24
+# auto generates one persistent value for the cluster; alternatively use 1-255.
+keepalived_vrrp_router_id: auto
+# The first k8s-master uses this priority; every following master decrements by
+# one, regardless of cluster size. Keep below 255 because 255 is reserved for
+# the VRRP address owner. An odd control-plane count is recommended for etcd.
+keepalived_priority_base: 200
+
+#---------------------------------------------------
+# Container registry
+#---------------------------------------------------
+registry_protocol: http
+registry_ip: 172.20.3.71
+registry_name: docker-registry
+registry_port: 4000
+
+#---------------------------------------------------
+# Operating-system package repository
+#---------------------------------------------------
+repo_protocol: http
+repo_ip: 172.20.3.71
+repo_name: repository
+repo_port: 8080
+
+#---------------------------------------------------
+# Data paths and installation behavior
+#---------------------------------------------------
+k8s_auditlog_dir: /u01/k8saudit
+etcd_backup_dir: /u01/etcdbackup
+etcdDataDir: /u01/etcd/
+containerd_root_dir: /u01/containerd
+
+# Users on control-plane nodes that receive ~/.kube/config.
+master_user: ["root", "vt_admin"]
+
+# Bootstrap is destructive on existing Kubernetes nodes. Review before reruns.
+common_bootstrap_enabled: true
+__rerun_bootstrap: true
+__bootstrap_dir: /root/kubebootstrap
+
+#===============================================================================
+# OPTIONAL KUBERNETES DEFAULTS
+# Normal installations can keep the values below unchanged.
+#===============================================================================
+
+#---------------------------------------------------
+# Container runtime and kubeadm
+#---------------------------------------------------
+containerd_sandbox_image: registry.k8s.io/pause:3.10
 criSocket: "unix:///run/containerd/containerd.sock"
+certificatesDir: /etc/kubernetes/pki
 
-# Certificate validity periods for Kubernetes-generated certificates.
-# 876000h is roughly 100 years; reduce this if your security policy requires
-# shorter certificate lifetimes.
 certificateValidityPeriod: 876000h
 caCertificateValidityPeriod: 876000h
 
-# API server audit log retention. These values are passed to kube-apiserver.
+feature_gates:
+  EtcdLearnerMode: false
+
+#---------------------------------------------------
+# API server, controller manager, and scheduler
+#---------------------------------------------------
 apiserver_audit_log_maxage: 30
 apiserver_audit_log_maxbackup: 10
 apiserver_audit_log_maxsize: 100
 
-# Kubernetes control-plane tuning. Most clusters should keep these defaults
-# unless the design document requires a different API server/controller behavior.
 apiserver_authorization_mode: Node,RBAC
 apiserver_event_ttl: 168h
 apiserver_kubelet_preferred_address_types: InternalDNS,InternalIP,Hostname,ExternalDNS,ExternalIP
 apiserver_service_node_port_range: 100-50000
 apiserver_timeoutForControlPlane: 4m0s
 apiserver_profiling: false
+
 controllerManager_cluster_signing_duration: 876000h
 controllerManager_terminated_pod_gc_threshold: 555
 controllerManager_profiling: false
-dns_type: CoreDNS
+controllerManager_bind_address: 0.0.0.0
+
 scheduler_bind_address: 0.0.0.0
 scheduler_profiling: false
+dns_type: CoreDNS
 
-# Kubelet health, read-only port, image garbage collection, and resource
-# reservations. Review carefully for production nodes with small disks or memory.
+#---------------------------------------------------
+# Kubelet and kube-proxy
+#---------------------------------------------------
 kubelet_healthzBindAddress: 0.0.0.0
 kubelet_healthzPort: 10248
 kubelet_readOnlyPort: 10255
@@ -237,117 +141,15 @@ kubelet_systemReserved: |-
   cpu: "200m"
   memory: "512Mi"
 kubelet_serverTLSBootstrap: true
+kubelet_reservedSystemCPUs: ""
 
-# Set to a CPU list such as "0-1" when using static CPU reservation. Leave empty
-# when the cluster does not require reserved system CPUs.
-kubelet_reservedSystemCPUs: ''
-
-# Kube-proxy bind addresses. 0.0.0.0 exposes health/metrics on all interfaces.
+kubeproxy_bindAddress: 0.0.0.0
 kubeproxy_healthzBindAddress: 0.0.0.0:10256
 kubeproxy_metricsBindAddress: 0.0.0.0:10249
 
-# kubeadm feature gates. Add only feature gates supported by k8s_version.
-feature_gates:
-  EtcdLearnerMode: false
-
 #---------------------------------------------------
-# Cluster networking
+# Repository definitions
 #---------------------------------------------------
-# true allows pods to be scheduled on control-plane nodes by removing the
-# NoSchedule taint after CNI installation.
-master_hybrid: true
-
-# Cluster name and DNS domain used in kubeadm config and API cert SAN entries.
-clusterName: kubernetes
-networking_dnsDomain: cluster.local
-
-# Calico node IP auto-detection CIDR. Must match the node network used for k8s_ip.
-ip_autodetection_method_cidr: 172.20.3.0/24
-
-# Interface used by Keepalived VRRP. Change to the real Kubernetes/management
-# interface, for example bond0.1005.
-interface_k8s: eth0
-
-# Pod and Service CIDRs. These must not overlap with node, VIP, or external
-# routing networks.
-networking_podSubnet: 192.168.0.0/16
-networking_serviceSubnet: 10.96.0.0/12
-
-# Component bind addresses. 0.0.0.0 exposes on all interfaces.
-kubeproxy_bindAddress: 0.0.0.0
-controllerManager_bind_address: 0.0.0.0
-
-# Bootstrap API endpoint. Default is the first host in the [master] inventory
-# group. Change only for non-standard bootstrap topology.
-localAPIEndpointAddress: "{{ hostvars[groups['master'][0]]['k8s_ip'] }}"
-localAPIEndpointPort: 6443
-
-# HAProxy frontend port for Kubernetes API and Keepalived virtual IP.
-# Set setup_ha to true only when the cluster should use HAProxy, Keepalived,
-# and their exporters. When false, kubeadm uses the bootstrap master's local
-# API endpoint directly even if the inventory contains multiple master nodes.
-setup_ha: true
-ha_apiserver_port: 8443
-k8s_master_ip: 172.20.3.155
-
-# Primary CNI. Current templates support calico. cilium is referenced but does
-# not currently have a matching cilium_init template list in services.yml.
-cni_prime: calico
-
-# Install Multus and Whereabouts in addition to the primary CNI.
-multi_network: true
-
-# Install macvlan NetworkAttachmentDefinitions. Requires multi_network: true.
-multus_macvlan: true
-
-# Install SR-IOV-related manifests. Requires multi_network: true and node NIC
-# preparation outside this file.
-multus_sriov: false
-
-# Optional SR-IOV PF-to-VF configuration idea. This is not consumed by current
-# tasks unless templates/tasks are extended to use it.
-# list_pfs_to_vfs:
-#   - { pf_name: "ens1f1", nofvfs: 32}
-#   - { pf_name: "ens15f1", nofvfs: 32}
-#   - { pf_name: "ens1f2", nofvfs: 32}
-#   - { pf_name: "ens15f2", nofvfs: 32}
-
-#---------------------------------------------------
-# Keepalived VRRP
-#---------------------------------------------------
-# VRRP authentication password, VIP prefix, and router ID. All master nodes must
-# use the same values. Router ID must be unique on the L2 segment.
-# keepalived_vrrp_router_id:
-#   auto: generate once on the bootstrap master and reuse from state.
-#   1-255: use the operator-provided router ID.
-keepalived_auth_pass: "3333"
-keepalived_vip_prefix: 24
-keepalived_vrrp_router_id: auto
-
-#---------------------------------------------------
-# Container registry endpoint
-#---------------------------------------------------
-# Private registry used for all Kubernetes images. Templates build image names as:
-# <registry_name>:<registry_port>/<upstream-image-path>:<tag>
-# Example:
-# harbor-registry:8017/registry.k8s.io/kube-apiserver:v1.31.4
-registry_protocol: http
-registry_ip: 172.20.3.71
-registry_name: docker-registry
-registry_port: 4000
-imageRepositoryProject: registry.k8s.io
-__registry_prefix: "{{ registry_name }}:{{ registry_port }}"
-
-#---------------------------------------------------
-# Red Hat dnf/yum repository endpoint
-#---------------------------------------------------
-# Repository host written into /etc/hosts as "repository". Target nodes use
-# os_repositories below to generate /etc/yum.repos.d/kubernetes.repo.
-repo_ip: 172.20.3.71
-repo_name: repository
-repo_port: 8080
-repo_protocol: http
-
 os_repositories:
   - id: rhel89baseos
     name: rhel89baseos
@@ -375,23 +177,16 @@ os_repositories:
     enabled: 1
     gpgcheck: 0
 
-#---------------------------------------------------
-# Data, audit, and certificate paths
-#---------------------------------------------------
-# These paths are created/used on target nodes. Ensure the backing filesystem has
-# enough capacity and survives node reboot.
-k8s_auditlog_dir: /u01/k8saudit
-etcd_backup_dir: /u01/etcdbackup
-etcdDataDir: /u01/etcd/
-containerd_root_dir: /u01/containerd
-certificatesDir: /etc/kubernetes/pki
+#===============================================================================
+# DERIVED VALUES
+# These are calculated from operator settings and normally do not need edits.
+#===============================================================================
+k8s_master_hosts: "{{ groups.get('k8s-master', []) }}"
+k8s_worker_hosts: "{{ groups.get('k8s-worker', []) }}"
+k8s_cluster_hosts: "{{ (k8s_master_hosts + k8s_worker_hosts) | unique | list }}"
+k8s_bootstrap_master: "{{ k8s_master_hosts | first }}"
+localAPIEndpointAddress: "{{ hostvars[k8s_bootstrap_master]['k8s_ip'] }}"
+localAPIEndpointPort: 6443
+imageRepositoryProject: registry.k8s.io
+__registry_prefix: "{{ registry_name }}:{{ registry_port }}"
 apiserver_kubelet_certificate_authority: "{{ certificatesDir }}/ca.crt"
-
-# Users on master nodes that should receive ~/.kube/config. Missing users are
-# logged and ignored by the kubeconfig role.
-master_user: ["root", "vt_admin"]
-
-# Controls whether common bootstrap scripts are allowed to rerun. true resets
-# Kubernetes/CNI/etcd state, so use carefully on existing clusters.
-__rerun_bootstrap: true
-__bootstrap_dir: /root/kubebootstrap

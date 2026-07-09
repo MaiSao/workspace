@@ -1,0 +1,14 @@
+---
+- name: Install Harbor cluster
+  hosts: HARBOR
+  become: true
+  roles:
+    - role: certs
+      when: inventory_hostname == primary_harbor_node
+    - role: harbor
+    - role: haproxy
+      when: setup_ha | bool
+    - role: keepalived
+      when: setup_ha | bool
+    - role: replications
+    - role: images

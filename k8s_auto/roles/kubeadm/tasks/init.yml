@@ -9,7 +9,7 @@
   args:
     executable: /bin/bash
   when:
-    - inventory_hostname == groups['master'][0]
+    - inventory_hostname == groups['k8s-master'][0]
     - "'kubeadm' in k8s_install_services"
 
 - name: Initialize first Kubernetes control-plane node with failure log tail
@@ -56,7 +56,7 @@
       fail:
         msg: "init-k8s.sh failed. See {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log"
   when:
-    - inventory_hostname == groups['master'][0]
+    - inventory_hostname == groups['k8s-master'][0]
     - "'kubeadm' in k8s_install_services"
 
 - name: Generate kubeadm worker join command
@@ -65,7 +65,7 @@
   args:
     executable: /bin/bash
   when: >
-    inventory_hostname == groups['master'][0]
+    inventory_hostname == groups['k8s-master'][0]
     and (
       'kubeadm' in k8s_install_services
     )
@@ -76,39 +76,61 @@
   args:
     executable: /bin/bash
   when: >
-    inventory_hostname == groups['master'][0]
+    inventory_hostname == groups['k8s-master'][0]
     and (
       'kubeadm' in k8s_install_services
     )
+
+- name: Extract uploaded control-plane certificate key
+  set_fact:
+    __control_plane_certificate_key: >-
+      {{
+        __cert_key.stdout_lines
+        | map('trim')
+        | select('match', '^[a-f0-9]{64}$')
+        | list
+        | first
+        | default('')
+      }}
+  when: inventory_hostname == k8s_bootstrap_master
+
+- name: Validate uploaded control-plane certificate key
+  assert:
+    that:
+      - __control_plane_certificate_key | length == 64
+    fail_msg: >-
+      kubeadm did not return a valid control-plane certificate key.
+      Output: {{ __cert_key.stdout_lines | default([]) }}
+  when: inventory_hostname == k8s_bootstrap_master
 
 - name: Build kubeadm join commands for control-plane and worker nodes
   set_fact:
-    control_join: |
-      {{ __join_command.stdout }} --control-plane --certificate-key {{ __cert_key.stdout_lines[2] }}
-    worker_join: |
-      {{ __join_command.stdout }}
+    control_join: >-
+      {{ __join_command.stdout | trim }} --control-plane --certificate-key
+      {{ __control_plane_certificate_key }}
+    worker_join: "{{ __join_command.stdout | trim }}"
   when: >
-    inventory_hostname == groups['master'][0]
+    inventory_hostname == groups['k8s-master'][0]
     and (
       'kubeadm' in k8s_install_services
     )
 
-- name: Publish kubeadm join commands to all inventory hosts
-  loop: "{{ groups['all'] }}"
+- name: Publish kubeadm join commands to all Kubernetes hosts
+  loop: "{{ k8s_cluster_hosts }}"
   loop_control:
     loop_var: target_host
   set_fact:
-    control_join: "{{ hostvars[groups['master'][0]].control_join | trim }}"
-    worker_join: "{{ hostvars[groups['master'][0]].worker_join | trim }}"
+    control_join: "{{ hostvars[groups['k8s-master'][0]].control_join | trim }}"
+    worker_join: "{{ hostvars[groups['k8s-master'][0]].worker_join | trim }}"
   delegate_to: "{{ target_host }}"
   delegate_facts: true
   when: >
-    inventory_hostname == groups['master'][0]
+    inventory_hostname == groups['k8s-master'][0]
     and (
       'kubeadm' in k8s_install_services
     )
-    and hostvars[groups['master'][0]].control_join is defined
-    and hostvars[groups['master'][0]].worker_join is defined
+    and hostvars[groups['k8s-master'][0]].control_join is defined
+    and hostvars[groups['k8s-master'][0]].worker_join is defined
 
 - name: Install helper script to regenerate kubeadm join commands
   shell: |
@@ -142,7 +164,7 @@
   args:
     executable: /bin/bash
   when: >
-    inventory_hostname == groups['master'][0]
+    inventory_hostname == groups['k8s-master'][0]
     and (
       'kubeadm' in k8s_install_services
     )

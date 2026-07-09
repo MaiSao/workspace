@@ -1,0 +1,38 @@
+- name: Ensure the destination directory exists
+  file:
+    path: /tmp/images/
+    state: directory
+    mode: '0755'
+  run_once: true
+
+- name: Copy Docker image tar.gz file to the remote node
+  copy:
+    src: images.tar.gz
+    dest: "/tmp/images/"
+    mode: '0644'
+  run_once: true
+
+
+- name: Load the Docker images from tar files
+  command: docker load -i /tmp/images/images.tar.gz
+  run_once: true
+
+- name: Log in to Harbor registry
+  shell: echo "{{ harbor_password }}" | docker login {{ ansible_host }}:{{ https_port }} -u "{{ harbor_user }}" --password-stdin
+  run_once: true
+
+- name: Retag and Push images to Harbor registry
+  shell: |
+    images=$(docker images --format "{{ '{{.Repository}}:{{.Tag}}' }}" | grep docker-registry:4000)
+    for image in $images; do
+      new_image=$(echo $image | sed "s|docker-registry:4000|{{ansible_host}}:{{https_port}}|")
+      docker tag $image $new_image
+      docker push $new_image
+    done
+  run_once: true
+
+- name: Clean up
+  file:
+    path: /tmp/images/
+    state: absent
+  run_once: true

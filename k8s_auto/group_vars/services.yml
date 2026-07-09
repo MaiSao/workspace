@@ -1,83 +1,65 @@
 ---
+#===============================================================================
+# SERVICE SELECTION
+# This is the only section normally edited to enable or disable services.
+# Execution order is defined explicitly in site.yml.
+#===============================================================================
+
+k8s_services:
+  common: true
+  containerd: true
+  haproxy: true
+  keepalived: true
+  kubeadm: true
+  calico: true
+  multus: true
+  whereabouts: true
+  coredns: true
+  metrics_server: true
+  kube_state_metrics: true
+  kubelet_csr_approver: true
+  kyverno: true
+  etcd_jobs: true
+  cert_exporter: true
+  snmp_exporter: true
+  snmp_switch_exporter: true
+  haproxy_exporter: true
+  keepalived_exporter: true
+  ip_pools_exporter: false
+  k8s_tuning: true
+
+k8s_extra_services:
+  fluentbit: true
+  local_path_provisioner: true
+  elasticsearch: false
+
+k8s_install_services: >-
+  {{
+    k8s_services
+    | dict2items
+    | selectattr('value', 'equalto', true)
+    | map(attribute='key')
+    | list
+  }}
+
+k8s_install_extra_services: >-
+  {{
+    k8s_extra_services
+    | dict2items
+    | selectattr('value', 'equalto', true)
+    | map(attribute='key')
+    | list
+  }}
+
+#===============================================================================
+# OPERATOR SERVICE CONFIGURATION
+# Edit only sections for features enabled above or in group_vars/all.yml.
+#===============================================================================
+
 #---------------------------------------------------
-# Service-specific configuration
+# Macvlan networks
 #---------------------------------------------------
-# The install plan lives at the top of group_vars/all.yml so operators can see
-# what will run before editing details. This file keeps per-service manifest
-# lists, add-on switches, exporter settings, and extra-service configuration.
-
-k8s_service_roles:
-  common: common
-  containerd: containerd
-  haproxy: haproxy
-  keepalived: keepalived
-  kubeadm: kubeadm
-  calico: services/calico
-  multus: services/multus
-  whereabouts: services/whereabouts
-  sriov: services/sriov
-  macvlan: services/macvlan
-  coredns: services/coredns
-  metrics_server: services/metrics_server
-  kube_state_metrics: services/kube_state_metrics
-  kubelet_csr_approver: services/kubelet_csr_approver
-  kyverno: services/kyverno
-  etcd_jobs: services/etcd_jobs
-  cert_exporter: services/cert_exporter
-  ip_pools_exporter: services/ip_pools_exporter
-  snmp_exporter: services/snmp_exporter
-  snmp_switch_exporter: services/snmp_switch_exporter
-  haproxy_exporter: services/haproxy_exporter
-  keepalived_exporter: services/keepalived_exporter
-  k8s_tuning: k8s_tuning
-
-#---------------------------------------------------
-# Manifest template lists
-#---------------------------------------------------
-# File names must exist under the owning role's templates/ directory.
-# kubeadm_init: roles/kubeadm/templates/
-# calico_init: roles/services/calico/templates/
-# coredns_init: roles/services/coredns/templates/
-# multus_init: roles/services/multus/templates/
-# whereabouts_init: roles/services/whereabouts/templates/
-# macvlan_init: roles/services/macvlan/templates/
-# sriov_init: roles/services/sriov/templates/
-# etcd_operation: roles/services/etcd_jobs/templates/
-# kyverno_init: roles/services/kyverno/templates/
-#---------------------------------------------------
-
-# kubeadm bootstrap configuration rendered before kubeadm init.
-kubeadm_init:
-  - kubeadm-config.yaml.j2
-
-# Primary Calico manifest rendered when cni_prime: calico.
-calico_init:
-  - calico-v3.28.2.yaml.j2
-
-# CoreDNS override and NodePort service manifest.
-coredns_init:
-  - coredns.yaml.j2
-
-# etcd operational CronJobs rendered by services/etcd_jobs.
-etcd_operation:
-  - etcd-backup-rotate-cronjob.yaml.j2
-  - etcd-defrag.yaml.j2
-
-# Multus manifests rendered when multi_network: true.
-multus_init:
-  - multus-daemonset_v4.1.3.yaml.j2
-
-# Whereabouts manifests rendered when multi_network: true.
-whereabouts_init:
-  - whereabouts_daemonset_install.yaml.j2
-  - whereabouts_ippools-cleaner.yaml.j2
-  - whereabouts_ippools.yaml.j2
-
-# Macvlan NADs rendered when multus_macvlan: true.
-macvlan_init:
-  - whereabouts-nad-macvlan.yaml.j2
-
-# Macvlan operator inputs. The template generates Whereabouts-backed
+# The template generates Whereabouts-backed
 # NetworkAttachmentDefinitions from these compact values.
 macvlan_defaults:
   namespace: default
@@ -100,13 +82,10 @@ macvlan_networks:
   - { name: aerospike-app, master_interface: bond2.2433, ip_range: 68.240.37.96/27, gateway: 68.240.37.126, range_start: 68.240.37.120, range_end: 68.240.37.125 }
   - { name: aerospike-linksite, master_interface: bond2.2438, ip_range: 68.240.37.80/28, gateway: 68.240.37.94, range_start: 68.240.37.81, range_end: 68.240.37.93 }
 
-# SR-IOV manifests rendered when multus_sriov: true.
-sriov_init:
-  - sriov_configMap.yaml.j2
-  - sriovdp-daemonsetv3.8.0.yaml.j2
-  - whereabouts-nad-sriov-bond.yaml.j2
-
-# SR-IOV operator inputs. Templates generate the full device-plugin ConfigMap
+#---------------------------------------------------
+# SR-IOV networks
+#---------------------------------------------------
+# Templates generate the full device-plugin ConfigMap
 # and NetworkAttachmentDefinitions from these compact values.
 sriov_resource_prefix: intel.com
 sriov_selector_vendors: ["8086", "14e4"]
@@ -158,19 +137,10 @@ sriov_bond_networks:
   - { name: media-ext-net, group: ext, range_start: 10.57.218.73, range_end: 10.57.218.77 }
   - { name: db-net, group: db }
 
-# Kyverno manifests rendered by services/kyverno.
-kyverno_init:
-  - kyverno-v1.14.4.yaml.j2
-  - kyverno-block-specific-nodeports.yaml.j2
-  - kyverno-require-run-as-nonroot.yaml.j2
-  - kyverno-pod-resources-request-limit-block.yaml.j2
-
 #---------------------------------------------------
 # Exporter service configuration
 #---------------------------------------------------
-# Exporters are split into service-level roles and enabled from
-# k8s_service_plan in group_vars/all.yml. IP pools exporter also requires
-# multus_sriov: true because it reports SR-IOV IP pool state.
+# IP pools exporter also requires multus_sriov: true.
 haproxy_exporter:
   listen_address: ":9101"
   scrape_uri: unix:/var/lib/haproxy/stats
@@ -184,42 +154,52 @@ snmp_switch_exporter:
   listen_address: ":9216"
   config_file: /etc/snmp_exporter/snmp_switch.yml
 
-haproxy_exporter_init:
-  - haproxy-exporter.yaml.j2
-
-keepalived_exporter_init:
-  - keepalived-exporter.yaml.j2
-
-exporter_images: >-
-  {{
-    ([] if 'cert_exporter' not in k8s_install_services else [cert_exporter_image])
-    + ([] if not (('ip_pools_exporter' in k8s_install_services) and (multus_sriov | default(false) | bool)) else [ip_pools_exporter_image])
-    + ([] if 'snmp_exporter' not in k8s_install_services else [snmp_exporter_image])
-    + ([] if 'snmp_switch_exporter' not in k8s_install_services else [snmp_switch_exporter_image])
-    + ([] if not (('haproxy_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [haproxy_exporter_image])
-    + ([] if not (('keepalived_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [keepalived_exporter_image, keepalived_exporter_tools_image])
-  }}
-
 #---------------------------------------------------
 # Elasticsearch extra service
 #---------------------------------------------------
-# Elasticsearch is installed by the extra service loop at the end of site.yml.
-# Values below preserve the
-# reference deployment under k8s_extends/elasticsearchv8.19 while splitting
-# elasticsearch.yml by node type for easier maintenance. Its StorageClasses use
-# local_path_provisioner_name, so the Local Path Provisioner extra service must
-# run before this role.
+# Its StorageClasses require Local Path Provisioner, which site.yml runs first.
 elasticsearch_namespace: elk
 elasticsearch_cluster_name: es-hcm
+
+# node_ip is the default: Elasticsearch binds and publishes the Kubernetes
+# node InternalIP, which kubelet receives from the inventory k8s_ip value.
+# Use interface only when Elasticsearch should use the pod network interface.
+elasticsearch_network_mode: node_ip
 elasticsearch_network_interface: eth0
+
+# Elasticsearch runs on every k8s-master by default. To use selected nodes,
+# set elasticsearch_target_groups: [] and list their inventory aliases in
+# elasticsearch_target_nodes. A target must belong to k8s-master or k8s-worker.
+# If its Kubernetes node name differs from the inventory alias/hostname, define
+# k8s_node_name for that host in inventory.ini.
 elasticsearch_node_selector_key: es-role
-elasticsearch_node_label_targets:
-  - group: master
-    value: all
-elasticsearch_seed_hosts: ["elasticsearch-master"]
-elasticsearch_initial_master_nodes: ["elasticsearch-master-0", "elasticsearch-master-1", "elasticsearch-master-2"]
+elasticsearch_node_selector_value: all
+elasticsearch_target_groups:
+  - k8s-master
+elasticsearch_target_nodes: []
+
+elasticsearch_seed_hosts:
+  - "elasticsearch-master:9300"
+# Defaults scale down for small clusters; operators may still override replicas
+# in elasticsearch_node_sets below.
+elasticsearch_valid_target_groups: >-
+  {{ elasticsearch_target_groups | intersect(groups.keys() | list) }}
+elasticsearch_target_hosts: >-
+  {{
+    (
+      (
+        elasticsearch_valid_target_groups
+        | map('extract', groups)
+        | flatten
+        | list
+      )
+      + elasticsearch_target_nodes
+    )
+    | unique
+    | list
+  }}
+elasticsearch_default_replicas: "{{ [elasticsearch_target_hosts | length, 3] | min }}"
 elasticsearch_environment_label: production
-elasticsearch_host_network: false
 
 elasticsearch_basic_auth:
   username: elastic
@@ -250,7 +230,7 @@ elasticsearch_client_service:
 elasticsearch_kibana:
   enabled: true
   replicas: 1
-  node_selector_role: all
+  node_selector_role: "{{ elasticsearch_node_selector_value }}"
   node_port: 8601
   base_path: /kibana
   security_encryption_key: xpack_security_encryption_key__1234
@@ -263,7 +243,7 @@ elasticsearch_kibana:
 elasticsearch_exporter:
   enabled: true
   replicas: 1
-  node_selector_role: all
+  node_selector_role: "{{ elasticsearch_node_selector_value }}"
   node_port: 9114
   resources:
     requests: { cpu: "100m", memory: "100Mi" }
@@ -279,9 +259,11 @@ elasticsearch_setup_job_resources:
 
 elasticsearch_node_sets:
   master:
-    replicas: 3
+    replicas: "{{ elasticsearch_default_replicas }}"
     roles: master
-    node_selector_role: all
+    http_port: 9200
+    transport_port: 9300
+    node_selector_role: "{{ elasticsearch_node_selector_value }}"
     java_opts: "-Xms2g -Xmx2g"
     resources:
       requests: { cpu: "500m", memory: "2Gi" }
@@ -295,9 +277,11 @@ elasticsearch_node_sets:
       thread_pool.search.queue_size: 1000
       indices.memory.index_buffer_size: 15%
   data:
-    replicas: 3
+    replicas: "{{ elasticsearch_default_replicas }}"
     roles: data,ingest
-    node_selector_role: all
+    http_port: 9201
+    transport_port: 9301
+    node_selector_role: "{{ elasticsearch_node_selector_value }}"
     java_opts: "-Xms2g -Xmx2g"
     resources:
       requests: { cpu: "1", memory: "2Gi" }
@@ -323,9 +307,11 @@ elasticsearch_node_sets:
       cluster.routing.allocation.balance.index: 0.55
       cluster.routing.allocation.allow_rebalance: always
   client:
-    replicas: 3
+    replicas: "{{ elasticsearch_default_replicas }}"
     roles: ingest,remote_cluster_client
-    node_selector_role: all
+    http_port: 9202
+    transport_port: 9302
+    node_selector_role: "{{ elasticsearch_node_selector_value }}"
     java_opts: "-Xms1g -Xmx1g"
     resources:
       requests: { cpu: "500m", memory: "1Gi" }
@@ -342,9 +328,6 @@ elasticsearch_node_sets:
 #---------------------------------------------------
 # Local Path Provisioner extra service
 #---------------------------------------------------
-# Rancher Local Path Provisioner is installed by the extra service loop at the
-# end of site.yml. The
-# template follows upstream v0.0.36 and exposes only the deployment knobs below.
 local_path_namespace: local-path-storage
 local_path_storage_class_name: local-path
 local_path_provisioner_name: rancher.io/local-path
@@ -362,9 +345,7 @@ local_path_helper_resources:
 #---------------------------------------------------
 # Fluent Bit extra service
 #---------------------------------------------------
-# Fluent Bit is installed by the extra service loop at the end of site.yml. Its native .conf files live in
-# roles/services/fluentbit/templates/conf/ and are lightly templated with these
-# deployment values and profile switches.
+# Native .conf templates live under roles/fluentbit/templates/conf/.
 fluentbit_namespace: fluentbit
 fluentbit_name: fluent-bit-ocs
 fluentbit_config_name: fluent-bit-ocs-config
@@ -394,3 +375,59 @@ fluentbit_host_paths:
   mda_data: /u01/mda
   storage: /u01/flb-storage
   db: /u01/flb-db
+
+#===============================================================================
+# ADVANCED SERVICE DEFAULTS
+# Template ownership and derived image lists normally do not need edits.
+#===============================================================================
+
+kubeadm_init:
+  - kubeadm-config.yaml.j2
+
+calico_init:
+  - calico-v3.28.2.yaml.j2
+
+coredns_init:
+  - coredns.yaml.j2
+
+etcd_operation:
+  - etcd-backup-rotate-cronjob.yaml.j2
+  - etcd-defrag.yaml.j2
+
+multus_init:
+  - multus-daemonset_v4.1.3.yaml.j2
+
+whereabouts_init:
+  - whereabouts_daemonset_install.yaml.j2
+  - whereabouts_ippools-cleaner.yaml.j2
+  - whereabouts_ippools.yaml.j2
+
+macvlan_init:
+  - whereabouts-nad-macvlan.yaml.j2
+
+sriov_init:
+  - sriov_configMap.yaml.j2
+  - sriovdp-daemonsetv3.8.0.yaml.j2
+  - whereabouts-nad-sriov-bond.yaml.j2
+
+kyverno_init:
+  - kyverno-v1.14.4.yaml.j2
+  - kyverno-block-specific-nodeports.yaml.j2
+  - kyverno-require-run-as-nonroot.yaml.j2
+  - kyverno-pod-resources-request-limit-block.yaml.j2
+
+haproxy_exporter_init:
+  - haproxy-exporter.yaml.j2
+
+keepalived_exporter_init:
+  - keepalived-exporter.yaml.j2
+
+exporter_images: >-
+  {{
+    ([] if 'cert_exporter' not in k8s_install_services else [cert_exporter_image])
+    + ([] if not (('ip_pools_exporter' in k8s_install_services) and (multus_sriov | default(false) | bool)) else [ip_pools_exporter_image])
+    + ([] if 'snmp_exporter' not in k8s_install_services else [snmp_exporter_image])
+    + ([] if 'snmp_switch_exporter' not in k8s_install_services else [snmp_switch_exporter_image])
+    + ([] if not (('haproxy_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [haproxy_exporter_image])
+    + ([] if not (('keepalived_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [keepalived_exporter_image, keepalived_exporter_tools_image])
+  }}
