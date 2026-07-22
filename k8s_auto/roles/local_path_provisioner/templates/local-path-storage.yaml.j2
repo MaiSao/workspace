@@ -78,6 +78,8 @@ spec:
     metadata:
       labels:
         app: local-path-provisioner
+      annotations:
+        k8s-auto.local-path/config-hash: "{{ (local_path_node_paths | default([local_path_default_path]) | unique | list | join(',')) | hash('sha256') }}"
     spec:
       serviceAccountName: local-path-provisioner-service-account
       containers:
@@ -130,7 +132,11 @@ data:
       "nodePathMap": [
         {
           "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
-          "paths": ["{{ local_path_default_path }}"]
+          "paths": [
+{% for local_path_node_path in local_path_node_paths | default([local_path_default_path]) | unique | list %}
+            "{{ local_path_node_path }}"{% if not loop.last %},{% endif %}
+{% endfor %}
+          ]
         }
       ]
     }

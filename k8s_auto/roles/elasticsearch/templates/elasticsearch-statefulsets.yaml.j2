@@ -105,7 +105,14 @@ spec:
           image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ elasticsearch_sysctl_image }}
           imagePullPolicy: IfNotPresent
           securityContext:
+            runAsUser: 0
+            runAsGroup: 0
             privileged: true
+            allowPrivilegeEscalation: true
+            readOnlyRootFilesystem: false
+            capabilities:
+              add:
+                - SYS_ADMIN
           command:
             - sh
             - -c

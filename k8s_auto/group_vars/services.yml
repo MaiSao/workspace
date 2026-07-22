@@ -337,6 +337,18 @@ local_path_namespace: local-path-storage
 local_path_storage_class_name: local-path
 local_path_provisioner_name: rancher.io/local-path
 local_path_default_path: /opt/local-path-provisioner
+local_path_additional_paths: >-
+  {{
+    (
+      [
+        elasticsearch_storage_classes.data.node_path,
+        elasticsearch_storage_classes.log.node_path
+      ]
+      if 'elasticsearch' in k8s_install_extra_services
+      else []
+    )
+  }}
+local_path_node_paths: "{{ ([local_path_default_path] + local_path_additional_paths) | unique | list }}"
 local_path_reclaim_policy: Delete
 local_path_volume_binding_mode: WaitForFirstConsumer
 local_path_make_default_storage_class: false

@@ -12,7 +12,7 @@
 
 - name: Set Fluent Bit render directory
   set_fact:
-    __fluentbit_render_dir: "{{ __bootstrap_dir | default('/root/kubebootstrap') }}/fluentbit"
+    __fluentbit_render_dir: "{{ __bootstrap_dir | default('/root/k8s_install') }}/fluentbit"
 
 - name: Create Fluent Bit render directory
   file:

@@ -12,7 +12,7 @@
 
 - name: Set Elasticsearch render directory
   set_fact:
-    __elasticsearch_render_dir: "{{ __bootstrap_dir | default('/root/kubebootstrap') }}/elasticsearch"
+    __elasticsearch_render_dir: "{{ __bootstrap_dir | default('/root/k8s_install') }}/elasticsearch"
 
 - name: Verify Local Path Provisioner dependency for Elasticsearch
   assert:
@@ -98,8 +98,8 @@
   debug:
     msg: >-
       WARNING: Elasticsearch master node set has replicas={{ item.value.replicas }}.
-      Core manifests will still be applied, but post-install setup, Kibana, and
-      exporter will be skipped until at least one master replica can run.
+      Core and dependent application manifests will still be applied, but rollout
+      waits will be skipped until at least one master replica can run.
   loop: "{{ elasticsearch_node_sets | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
@@ -220,7 +220,6 @@
     - storageclasses.yaml.j2
     - elasticsearch-services.yaml.j2
     - elasticsearch-statefulsets.yaml.j2
-    - elasticsearch-post-install-job.yaml.j2
     - kibana.yaml.j2
     - elasticsearch-exporter.yaml.j2
   template:
@@ -281,8 +280,9 @@
       {{ item.item.value.replicas }} labeled node(s) with
       {{ elasticsearch_node_selector_key | default('es-role') }}={{ item.item.value.node_selector_role }},
       but found {{ (item.stdout_lines | default([])) | length }}.
-      Core manifests were applied. Pods may remain Pending until enough nodes
-      are labeled. Skipping Elasticsearch readiness-dependent tasks in this run.
+      Core and dependent application manifests will be applied. Pods may remain
+      Pending or Init until enough nodes are labeled and Elasticsearch is ready.
+      Skipping rollout waits in this run.
   loop: "{{ __elasticsearch_node_set_labeled_nodes.results | default([]) }}"
   loop_control:
     label: "{{ item.item.key | default('unknown') }}"
@@ -290,6 +290,24 @@
     (item.rc | default(1)) != 0
     or ((item.stdout_lines | default([])) | length) < (item.item.value.replicas | int)
     or (item.item.key == 'master' and (item.item.value.replicas | int) < 1)
+
+- name: Apply Kibana manifests
+  command:
+    argv:
+      - kubectl
+      - apply
+      - -f
+      - "{{ __elasticsearch_render_dir }}/kibana.yaml"
+  when: elasticsearch_kibana.enabled | default(true) | bool
+
+- name: Apply Elasticsearch exporter manifests
+  command:
+    argv:
+      - kubectl
+      - apply
+      - -f
+      - "{{ __elasticsearch_render_dir }}/elasticsearch-exporter.yaml"
+  when: elasticsearch_exporter.enabled | default(true) | bool
 
 - name: Wait for Elasticsearch StatefulSet rollouts
   loop: "{{ elasticsearch_node_sets | dict2items }}"
@@ -301,36 +319,6 @@
   when:
     - __elasticsearch_scheduling_ready | default(false) | bool
     - item.value.replicas | int > 0
-
-- name: Run Elasticsearch post-install security setup
-  shell: |
-    set -Eeuo pipefail
-    kubectl -n {{ elasticsearch_namespace }} delete job elasticsearch-post-install --ignore-not-found
-    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-post-install-job.yaml
-    if ! kubectl -n {{ elasticsearch_namespace }} wait --for=condition=complete job/elasticsearch-post-install --timeout={{ elasticsearch_post_install_job_timeout | default('300s') }}; then
-      kubectl -n {{ elasticsearch_namespace }} logs job/elasticsearch-post-install || true
-      kubectl -n {{ elasticsearch_namespace }} describe job elasticsearch-post-install || true
-      exit 1
-    fi
-    kubectl -n {{ elasticsearch_namespace }} logs job/elasticsearch-post-install || true
-  args:
-    executable: /bin/bash
-  when:
-    - __elasticsearch_scheduling_ready | default(false) | bool
-    - elasticsearch_kibana.enabled | default(true) | bool
-
-- name: Apply Elasticsearch dependent applications
-  shell: |
-    set -Eeuo pipefail
-    {% if elasticsearch_kibana.enabled | default(true) | bool %}
-    kubectl apply -f {{ __elasticsearch_render_dir }}/kibana.yaml
-    {% endif %}
-    {% if elasticsearch_exporter.enabled | default(true) | bool %}
-    kubectl apply -f {{ __elasticsearch_render_dir }}/elasticsearch-exporter.yaml
-    {% endif %}
-  args:
-    executable: /bin/bash
-  when: __elasticsearch_scheduling_ready | default(false) | bool
 
 - name: Wait for Kibana rollout
   shell: |

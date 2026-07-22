@@ -17,7 +17,7 @@
   tags: ["dryrun"]
   template:
     src: containerd-bootstrap.sh.j2
-    dest: /root/kube-containerd-bootstrap.sh
+    dest: "{{ __bootstrap_dir }}/kube-containerd-bootstrap.sh"
     mode: '0755'
   when: "'containerd' in k8s_install_services"
 
@@ -26,7 +26,7 @@
     - name: Run containerd installation bootstrap script
       shell: |
         set -Eeuo pipefail
-        bash /root/kube-containerd-bootstrap.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/containerd-bootstrap.{{ __session_time }}.log
+        bash {{ __bootstrap_dir }}/kube-containerd-bootstrap.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/containerd-bootstrap.{{ __session_time }}.log
       args:
         executable: /bin/bash
   rescue:

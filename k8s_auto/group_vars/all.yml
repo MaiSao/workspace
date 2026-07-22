@@ -66,6 +66,7 @@ keepalived_k8s_fragment_name: k8s-apiserver-vip.conf
 keepalived_k8s_vrrp_instance_name: K8S_APISERVER_VIP
 keepalived_k8s_vrrp_script_name: chk_k8s_apiserver
 keepalived_k8s_check_script_path: /etc/keepalived/check_k8s_apiserver.sh
+keepalived_script_user: root
 
 #---------------------------------------------------
 # Container registry
@@ -97,7 +98,7 @@ master_user: ["root", "vt_admin"]
 # Bootstrap is destructive on existing Kubernetes nodes. Review before reruns.
 common_bootstrap_enabled: true
 __rerun_bootstrap: true
-__bootstrap_dir: /root/kubebootstrap
+__bootstrap_dir: /root/k8s_install
 
 #===============================================================================
 # OPTIONAL KUBERNETES DEFAULTS

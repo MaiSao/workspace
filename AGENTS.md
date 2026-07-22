@@ -58,7 +58,7 @@ Internal runtime facts use the existing `__name` pattern, for example `__bootstr
 
 ## Testing Guidelines
 
-No automated test framework is configured. At minimum, run `--syntax-check` and `--list-tasks` before deploying. For risky role changes, test against disposable nodes or a lab inventory first. Verify generated logs under `/root/kubebootstrap/logs/` on target hosts.
+No automated test framework is configured. At minimum, run `--syntax-check` and `--list-tasks` before deploying. For risky role changes, test against disposable nodes or a lab inventory first. Verify generated installer logs under `/root/k8s_install/logs/` on target hosts.
 
 ## Commit & Pull Request Guidelines
 
@@ -175,7 +175,7 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 - The installation summary displays enabled and disabled service names from those maps.
 - Replaced the old `common-bootstrap.sh.j2` script with named Ansible tasks inside `roles/common/tasks/main.yml` so reset, hosts, repository, kernel, package, kubelet, NetworkManager, and etcd client tool steps are visible independently.
 - Standardized install/bootstrap script logging for containerd, kubeadm init, kubeadm join, and join-command regeneration. The common role now uses named Ansible tasks instead of a bootstrap script.
-- Script-running tasks now capture stderr with stdout into `/root/kubebootstrap/logs/` and print the last 120 log lines on failure.
+- Script-running tasks now capture stderr with stdout into `/root/k8s_install/logs/` and print the last 120 log lines on failure.
 - Runtime scripts and service units are intentionally not changed for Ansible logging behavior.
 
 ## Change Log For SR-IOV Variables

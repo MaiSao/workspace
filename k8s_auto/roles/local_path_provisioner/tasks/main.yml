@@ -12,7 +12,7 @@
 
 - name: Set Local Path Provisioner render directory
   set_fact:
-    __local_path_render_dir: "{{ __bootstrap_dir | default('/root/kubebootstrap') }}/local-path-provisioner"
+    __local_path_render_dir: "{{ __bootstrap_dir | default('/root/k8s_install') }}/local-path-provisioner"
 
 - name: Create Local Path Provisioner render directory
   file:

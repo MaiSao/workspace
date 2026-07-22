@@ -18,7 +18,7 @@
       register: __init_cluster
       shell: |
         set -Eeuo pipefail
-        cat > /root/init-k8s.sh <<'EOF'
+        cat > {{ __bootstrap_dir }}/init-k8s.sh <<'EOF'
         set -Eeuo pipefail
         log() { echo "[$(date '+%F %T')] $*"; }
         fail() {
@@ -29,7 +29,7 @@
         }
         trap fail ERR
         log "Starting kubeadm init"
-        KUBEADMF=/root/kubeadm.yaml
+        KUBEADMF={{ __bootstrap_dir }}/kubeadm.yaml
         kubeadm config migrate --old-config {{ __bootstrap_dir }}/kubeadm-config.yaml --new-config $KUBEADMF
         sed -i 's/controlPlaneComponentHealthCheck.*/controlPlaneComponentHealthCheck: 30s/g' $KUBEADMF
         echo '---' >> $KUBEADMF
@@ -39,7 +39,7 @@
         kubeadm init --upload-certs --config $KUBEADMF
         log "Completed kubeadm init"
         EOF
-        bash /root/init-k8s.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log
+        bash {{ __bootstrap_dir }}/init-k8s.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/init-cluster.{{ __session_time }}.log
       args:
         executable: /bin/bash
   rescue:
@@ -135,7 +135,7 @@
 - name: Install helper script to regenerate kubeadm join commands
   shell: |
     set -Eeuo pipefail
-    cat > /root/regen_join_command.sh <<'EOF'
+    cat > {{ __bootstrap_dir }}/regen_join_command.sh <<'EOF'
     set -Eeuo pipefail
     log() { echo "[$(date '+%F %T')] $*"; }
     fail() {

@@ -31,7 +31,7 @@
   loop: "{{ kubeadm_init }}"
   template:
     src: "{{ item }}"
-    dest: "/root/kubebootstrap/{{ item | replace('.j2','') }}"
+    dest: "{{ __bootstrap_dir }}/{{ item | replace('.j2','') }}"
   when: >
     'kubeadm' in k8s_install_services
     and inventory_hostname == groups['k8s-master'][0]

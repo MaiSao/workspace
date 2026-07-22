@@ -3,6 +3,7 @@
 
 vrrp_script {{ keepalived_k8s_vrrp_script_name | default('chk_k8s_apiserver') }} {
     script "{{ keepalived_k8s_check_script_path | default('/etc/keepalived/check_k8s_apiserver.sh') }}"
+    user {{ keepalived_script_user | default('root') }}
     interval 3
     weight -2
     fall 10

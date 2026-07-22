@@ -16,7 +16,7 @@
     - name: Join additional control-plane node
       shell: |
         set -Eeuo pipefail
-        cat > /root/join-cluster.sh <<'EOF'
+        cat > {{ __bootstrap_dir }}/join-cluster.sh <<'EOF'
         set -Eeuo pipefail
         log() { echo "[$(date '+%F %T')] $*"; }
         fail() {
@@ -30,7 +30,7 @@
         {{ control_join }} --apiserver-advertise-address {{ k8s_ip }}
         log "Completed control-plane kubeadm join"
         EOF
-        bash /root/join-cluster.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+        bash {{ __bootstrap_dir }}/join-cluster.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
       args:
         executable: /bin/bash
   rescue:
@@ -60,7 +60,7 @@
     - name: Join worker node
       shell: |
         set -Eeuo pipefail
-        cat > /root/join-cluster.sh <<'EOF'
+        cat > {{ __bootstrap_dir }}/join-cluster.sh <<'EOF'
         set -Eeuo pipefail
         log() { echo "[$(date '+%F %T')] $*"; }
         fail() {
@@ -74,7 +74,7 @@
         {{ worker_join }}
         log "Completed worker kubeadm join"
         EOF
-        bash /root/join-cluster.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+        bash {{ __bootstrap_dir }}/join-cluster.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
       args:
         executable: /bin/bash
   rescue:
