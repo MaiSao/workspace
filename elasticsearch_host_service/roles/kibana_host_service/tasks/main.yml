@@ -1,0 +1,100 @@
+---
+- name: Install required OS packages
+  package:
+    name:
+      - curl
+      - tar
+      - gzip
+    state: present
+
+- name: Create Kibana group
+  group:
+    name: "{{ kibana_group }}"
+    system: true
+
+- name: Create Kibana user
+  user:
+    name: "{{ kibana_user }}"
+    group: "{{ kibana_group }}"
+    system: true
+    shell: /sbin/nologin
+    home: "{{ kibana_install_root }}"
+    create_home: false
+
+- name: Create Kibana directories
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(kibana_user) }}"
+    group: "{{ item.group | default(kibana_group) }}"
+    mode: "{{ item.mode | default('0750') }}"
+  loop:
+    - { path: "{{ kibana_install_root }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ elastic_artifact_cache }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ kibana_config_dir }}" }
+    - { path: "{{ kibana_config_dir }}/certs" }
+    - { path: "{{ kibana_data_dir }}" }
+    - { path: "{{ kibana_log_dir }}" }
+    - { path: "{{ kibana_pid_dir }}" }
+
+- name: Download Kibana archive
+  get_url:
+    url: "{{ kibana_archive_url }}"
+    dest: "{{ elastic_artifact_cache }}/kibana-{{ elastic_version }}-{{ elastic_arch }}.tar.gz"
+    mode: "0644"
+
+- name: Extract Kibana archive
+  unarchive:
+    src: "{{ elastic_artifact_cache }}/kibana-{{ elastic_version }}-{{ elastic_arch }}.tar.gz"
+    dest: "{{ kibana_install_root }}"
+    remote_src: true
+    creates: "{{ kibana_install_root }}/kibana-{{ elastic_version }}"
+    owner: root
+    group: root
+
+- name: Set Kibana install symlink
+  file:
+    src: "{{ kibana_install_root }}/kibana-{{ elastic_version }}"
+    dest: "{{ kibana_install_root }}/kibana"
+    state: link
+
+- name: Copy Elasticsearch CA bundle to Kibana host
+  copy:
+    src: "{{ elastic_cert_bundle_local }}"
+    dest: "{{ elastic_cert_bundle_remote }}"
+    mode: "0600"
+
+- name: Install Elasticsearch CA for Kibana
+  unarchive:
+    src: "{{ elastic_cert_bundle_remote }}"
+    dest: "{{ kibana_config_dir }}/certs"
+    remote_src: true
+    owner: "{{ kibana_user }}"
+    group: "{{ kibana_group }}"
+    mode: "0640"
+
+- name: Render Kibana configuration
+  template:
+    src: kibana.yml.j2
+    dest: "{{ kibana_config_dir }}/kibana.yml"
+    owner: "{{ kibana_user }}"
+    group: "{{ kibana_group }}"
+    mode: "0640"
+  notify: Restart Kibana
+
+- name: Render Kibana systemd unit
+  template:
+    src: kibana.service.j2
+    dest: /etc/systemd/system/kibana.service
+    mode: "0644"
+  notify: Restart Kibana
+
+- name: Apply pending Kibana handlers before start
+  meta: flush_handlers
+
+- name: Enable and start Kibana
+  systemd:
+    name: kibana
+    enabled: true
+    state: started
+    daemon_reload: true

@@ -1,0 +1,50 @@
+#---------------------------------------------------
+# CHECKLIST CONFIG VARIABLES
+#---------------------------------------------------
+# Images checklist for base cluster that use calico.
+#---------------------------------------------------
+cilium_images:
+  - cilium/cilium:1.18.5
+calico_images:
+  - calico/cni:v3.28.2
+  - calico/kube-controllers:v3.28.2
+  - calico/node:v3.28.2
+multus_images:
+  - vht/ocs/whereabouts:0.5.4-22-d05f10dc
+  - k8snetworkplumbingwg/multus-cni:v4.1.3
+operation_images:
+  - registry.k8s.io/etcd-backup:3.5.15
+  - k8s.gcr.io/metrics-server/metrics-server:v0.8.0
+  - registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
+core_images:
+  - registry.k8s.io/coredns:v1.11.3
+  - registry.k8s.io/etcd:3.5.15-0
+  - "registry.k8s.io/kube-apiserver:{{ k8s_version }}"
+  - "registry.k8s.io/kube-controller-manager:{{ k8s_version }}"
+  - "registry.k8s.io/kube-proxy:{{ k8s_version }}"
+  - "registry.k8s.io/kube-scheduler:{{ k8s_version }}"
+  - registry.k8s.io/pause:3.10
+#---------------------------------------------------
+# Config files checklist for base cluster
+#---------------------------------------------------
+kubeadm_init:
+        - kubeadm-config.yaml.j2
+calico_init:
+        - calico-v3.28.2.yaml.j2
+coredns_init:
+        - coredns.yaml.j2
+etcd_operation:
+        - etcd-backup-rotate-cronjob.yaml.j2
+        - etcd-defrag.yaml.j2
+multus_init:
+        - multus-daemonset_v4.1.3.yaml.j2
+        - whereabouts_daemonset_install.yaml.j2
+        - whereabouts_ip-reconciler-job.yaml.j2
+        - whereabouts_ippools.yaml.j2
+sriov_init:
+        - sriov_configMap.yaml.j2
+        - sriovdp-daemonsetv3.8.0.yaml.j2
+        - whereabouts-net-sriov-bond.yaml.j2
+add_on_self:
+        - kube-state-metrics.yaml.j2
+        - metric-server-v0.8.0.yaml.j2

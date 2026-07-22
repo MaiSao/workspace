@@ -71,6 +71,23 @@
     - inventory_hostname == groups['k8s-master'][0]
     - setup_ha | default(true) | bool
 
+- name: Recreate old Keepalived exporter DaemonSet when selector format changed
+  shell: |
+    set -Eeuo pipefail
+    current_selector="$(
+      kubectl -n kube-system get daemonset keepalived-exporter \
+        -o jsonpath='{.spec.selector.matchLabels.app}' 2>/dev/null || true
+    )"
+    if [[ "${current_selector}" == "keepalived-exporter" ]]; then
+      kubectl -n kube-system delete daemonset keepalived-exporter --wait=true
+    fi
+  args:
+    executable: /bin/bash
+  when:
+    - "'keepalived_exporter' in k8s_install_services"
+    - inventory_hostname == groups['k8s-master'][0]
+    - setup_ha | default(true) | bool
+
 - name: Apply Keepalived exporter DaemonSet
   shell: |
     set -Eeuo pipefail

@@ -40,8 +40,8 @@ spec:
           image: {{ __registry_prefix }}/{{ haproxy_exporter_image }}
           imagePullPolicy: IfNotPresent
           args:
-            - --web.listen-address={{ haproxy_exporter.listen_address }}
-            - --haproxy.scrape-uri={{ haproxy_exporter.scrape_uri }}
+            - {{ ('--web.listen-address=' ~ haproxy_exporter.listen_address) | quote }}
+            - {{ ('--haproxy.scrape-uri=' ~ haproxy_exporter.scrape_uri) | quote }}
 {% for arg in (haproxy_exporter.extra_args | default('', true)).split() %}
             - {{ arg | quote }}
 {% endfor %}
@@ -52,11 +52,3 @@ spec:
               protocol: TCP
           resources:
 {{ k8s_resources.haproxy_exporter | to_nice_yaml(indent=2) | indent(12, true) }}
-          volumeMounts:
-            - mountPath: /var/lib/haproxy
-              name: haproxy-stats
-      volumes:
-        - name: haproxy-stats
-          hostPath:
-            path: /var/lib/haproxy
-            type: Directory

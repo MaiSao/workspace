@@ -52,6 +52,7 @@
     dest: "/tmp/"
     flat: yes
   delegate_to: "{{ primary_harbor_node }}"
+  run_once: true
   with_items:
     - "{{ harbor_domain }}.cert"
     - "{{ harbor_domain }}.crt"

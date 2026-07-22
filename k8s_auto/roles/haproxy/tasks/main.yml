@@ -24,7 +24,10 @@
   shell: |
     set -Eeuo pipefail
     setsebool -P haproxy_connect_any=1 || true
-    semanage port -a -t http_port_t -p tcp {{ ha_apiserver_port }} || true
+    if command -v semanage >/dev/null 2>&1; then
+      semanage port -a -t http_port_t -p tcp {{ ha_apiserver_port }} || semanage port -m -t http_port_t -p tcp {{ ha_apiserver_port }} || true
+      semanage port -a -t http_port_t -p tcp {{ haproxy_stats_port | default(8404) }} || semanage port -m -t http_port_t -p tcp {{ haproxy_stats_port | default(8404) }} || true
+    fi
   args:
     executable: /bin/bash
   when:
@@ -36,8 +39,9 @@
   loop:
     - apiserver.cfg
     - kube-apiserver.cfg
+    - kubernetes.cfg
   file:
-    path: "/etc/haproxy/conf.d/{{ item }}"
+    path: "{{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }}/{{ item }}"
     state: absent
   when:
     - "'haproxy' in k8s_install_services"
@@ -46,7 +50,7 @@
 
 - name: Create HAProxy config fragment directory
   file:
-    path: /etc/haproxy/conf.d
+    path: "{{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }}"
     state: directory
     mode: '0755'
   when:
@@ -54,7 +58,16 @@
     - "'k8s-master' in group_names"
     - setup_ha | default(true) | bool
 
-- name: Render HAProxy Kubernetes API load balancer config
+- name: Check existing HAProxy main config
+  stat:
+    path: /etc/haproxy/haproxy.cfg
+  register: __haproxy_main_config
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Render HAProxy main config when absent
   template:
     src: haproxy.cfg.j2
     dest: /etc/haproxy/haproxy.cfg
@@ -63,11 +76,23 @@
     - "'haproxy' in k8s_install_services"
     - "'k8s-master' in group_names"
     - setup_ha | default(true) | bool
+    - not __haproxy_main_config.stat.exists
+
+- name: Remove legacy HAProxy stats socket from main config
+  lineinfile:
+    path: /etc/haproxy/haproxy.cfg
+    regexp: >-
+      ^\s*stats socket /var/lib/haproxy/stats.*$
+    state: absent
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
 
 - name: Render HAProxy Kubernetes API config fragment
   template:
     src: kubernetes.cfg.j2
-    dest: /etc/haproxy/conf.d/kubernetes.cfg
+    dest: "{{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }}/{{ haproxy_k8s_fragment_name | default('k8s-apiserver.cfg') }}"
     mode: '0644'
   when:
     - "'haproxy' in k8s_install_services"
@@ -91,7 +116,7 @@
     content: |
       [Service]
       ExecStart=
-      ExecStart=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -f /etc/haproxy/conf.d -p /run/haproxy.pid
+      ExecStart=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -f {{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }} -p /run/haproxy.pid
   when:
     - "'haproxy' in k8s_install_services"
     - "'k8s-master' in group_names"
@@ -100,8 +125,8 @@
 - name: Validate HAProxy configuration
   shell: |
     set -Eeuo pipefail
-    if [[ -d /etc/haproxy/conf.d ]]; then
-      haproxy -c -f /etc/haproxy/haproxy.cfg -f /etc/haproxy/conf.d
+    if [[ -d {{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }} ]]; then
+      haproxy -c -f /etc/haproxy/haproxy.cfg -f {{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }}
     else
       haproxy -c -f /etc/haproxy/haproxy.cfg
     fi

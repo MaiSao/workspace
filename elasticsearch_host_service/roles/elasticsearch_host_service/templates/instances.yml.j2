@@ -1,0 +1,9 @@
+instances:
+{% for host in groups.elasticsearch %}
+  - name: {{ host }}
+    dns:
+      - {{ host }}
+      - {{ hostvars[host].ansible_hostname | default(host) }}
+    ip:
+      - {{ hostvars[host].elk_ip }}
+{% endfor %}

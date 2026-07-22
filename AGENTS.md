@@ -2,12 +2,17 @@
 
 ## Project Structure & Module Organization
 
-This repository contains an Ansible-based Kubernetes installer under `k8s_auto/`.
+This repository contains an Ansible-based Kubernetes installer under `k8s_auto/`
+and a separated post-install checklist under `k8s_checklist/`.
 
 - `k8s_auto/site.yml`: main playbook entry point.
 - `k8s_auto/inventory.ini`: target host inventory; define `k8s-master` and `k8s-worker` hosts here.
 - `k8s_auto/group_vars/`: operator files: `all.yml` for cluster/infrastructure settings, `services.yml` for service switches and configuration, `images.yml` for image names and pull lists, and `resources.yml` for requests/limits.
 - `k8s_auto/roles/`: all orchestration, base, CNI, add-on, exporter, and extra-service roles live directly at this single role level.
+- `k8s_checklist/playbook.yml`: independent checklist entry point.
+- `k8s_checklist/inventory.ini`: independent checklist inventory.
+- `k8s_checklist/group_vars/checklist.yml`: user-supplied checklist inputs and rules.
+- `k8s_checklist/roles/checklist/`: checklist execution engine.
 
 There is currently no dedicated test directory.
 
@@ -33,6 +38,17 @@ ansible-playbook -i inventory.ini site.yml --syntax-check
 ```
 
 Validate playbook syntax before deployment.
+
+Run commands from `k8s_checklist/`:
+
+```bash
+ansible-playbook -i inventory.ini playbook.yml
+ansible-playbook -i inventory.ini playbook.yml --syntax-check
+ansible-playbook -i inventory.ini playbook.yml --list-tasks
+```
+
+Runs or inspects the separated post-install checklist. The checklist uses its
+own inventory and `group_vars/checklist.yml`; do not import installer vars.
 
 ## Coding Style & Naming Conventions
 
@@ -193,3 +209,11 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 - Moved manifest template lists into `services.yml`; resource values now live in `resources.yml`.
 - Removed the old `master.yml`; its resource values now live in `services.yml`.
 - Updated `site.yml`, `README.md`, and this guide to reference the new file layout.
+
+## Change Log For Checklist Playbook
+
+- Moved checklist out of `k8s_auto` into the sibling `k8s_checklist/` directory so installation and verification flows are independent.
+- Added `k8s_checklist/playbook.yml` as the standalone checklist entry point.
+- Added `k8s_checklist/group_vars/checklist.yml` as the single checklist input and rule set. Operators push or edit expected parameters here after installation.
+- Checklist runs host service checks, host config file checks, Kubernetes core pod health checks, object existence checks, rollout checks, JSONPath parameter assertions, CNI NAD checks, Elasticsearch target label checks, and selected extra-service parameter checks.
+- Each checklist run writes the effective comparison parameters to `/root/kubebootstrap/checklist/install-parameters.yml` on the bootstrap master.

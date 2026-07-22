@@ -76,7 +76,7 @@ roles/ip_pools_exporter/ SR-IOV IP pools exporter
 roles/snmp_exporter/ SNMP daemon config and SNMP exporter
 roles/snmp_switch_exporter/ SNMP switch exporter
 roles/haproxy_exporter/ HAProxy exporter DaemonSet on master nodes
-roles/keepalived_exporter/ Keepalived exporter DaemonSet on master nodes
+roles/keepalived_exporter/ Keepalived exporter DaemonSet and Service on master nodes
 roles/fluentbit/     optional Fluent Bit extra service for cluster, host, and application logs
 roles/local_path_provisioner/ optional Rancher local-path storage provisioner
 roles/elasticsearch/ optional Elasticsearch, Kibana, and Elasticsearch exporter stack
@@ -124,10 +124,20 @@ Example: run selected exporters after the cluster exists:
 
 ```shell
 ansible-playbook -i inventory.ini site.yml \
-  -e '{"k8s_services":{"cert_exporter":true,"snmp_exporter":true,"haproxy_exporter":true}}'
+  -e '{"k8s_services":{"cert_exporter":true,"snmp_exporter":true,"haproxy_exporter":true,"keepalived_exporter":true}}'
 ```
 
 `ip_pools_exporter` also requires `multus_sriov: true`.
+
+HA exporters are gated by `setup_ha: true`. HAProxy exporter runs on
+master/control-plane nodes and scrapes the local HAProxy HTTP stats endpoint
+configured by `haproxy_stats_bind_host` and `haproxy_stats_port` in
+`group_vars/all.yml`.
+Keepalived exporter also runs only on master/control-plane nodes using node
+affinity and tolerations. It mounts host `/run` at `/host-run`, reads
+`keepalived_exporter.pid_path` from `group_vars/services.yml`, and exposes
+metrics through the `keepalived-exporter` ClusterIP Service in `kube-system`.
+It does not require a custom node label.
 
 ## 7. Deploy Full Cluster
 
@@ -160,17 +170,29 @@ For Fluent Bit, adjust the small deployment variable set in `group_vars/services
 
 For Local Path Provisioner, adjust `local_path_default_path`, `local_path_storage_class_name`, and related `local_path_*` values in `group_vars/services.yml`.
 
-For Elasticsearch, label target nodes before applying:
+For Elasticsearch, the role can label target nodes automatically when
+`elasticsearch_auto_label_nodes: true` and the target inventory hosts resolve to
+real Kubernetes node names. The default scheduling label is:
 
 ```shell
-kubectl label node <master-node> es-role=master
-kubectl label node <data-node> es-role=data
-kubectl label node <client-node> es-role=client
+kubectl label node <node-name> es-role=all --overwrite
 ```
 
-Elasticsearch depends on Local Path Provisioner for its data and log PVC StorageClasses. Keep `local_path_provisioner` enabled and before `elasticsearch`; the role waits for the provisioner rollout before applying Elasticsearch manifests. Elasticsearch renders separate config maps for master, data, and client node sets while sharing `elasticsearch-log4j2` and `jvm-config`. After the Elasticsearch StatefulSets are ready, a short-lived `elasticsearch-post-install` Job sets the `kibana_system` password from `elasticsearch_kibana_auth`; Kibana and the exporter are applied only after that job succeeds.
+Auto-label is best effort: missing target hosts, wrong node names, and failed
+`kubectl label` commands produce warnings instead of stopping the install. The
+role still applies Elasticsearch core manifests, so pods may stay Pending until
+the correct label exists. After labeling nodes, rerun the Elasticsearch role to
+complete readiness-dependent steps.
 
-## 9. Add Future Extra Services
+Elasticsearch depends on Local Path Provisioner for its data and log PVC StorageClasses. Keep `local_path_provisioner` enabled and before `elasticsearch`; the role waits for the provisioner rollout before applying Elasticsearch manifests. Elasticsearch renders separate config maps for master, data, and client node sets while sharing `elasticsearch-log4j2` and `jvm-config`. After the Elasticsearch StatefulSets are ready, a short-lived `elasticsearch-post-install` Job sets the `kibana_system` password from `elasticsearch_kibana_auth`; Kibana and the exporter are applied only after that job succeeds. If scheduling labels are insufficient, those readiness-dependent steps are skipped for that run and can be completed by rerunning after labels are fixed.
+
+## 9. Run The Checklist
+
+Post-install and periodic checks are intentionally separated from this installer.
+Use the sibling `../k8s_checklist/` playbook so installation logic and checklist
+logic stay independent.
+
+## 10. Add Future Extra Services
 
 Create a new role under `roles/`, for example:
 

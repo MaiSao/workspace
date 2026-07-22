@@ -1,0 +1,32 @@
+cluster.name: {{ elastic_cluster_name }}
+node.name: {{ inventory_hostname }}
+node.roles: {{ elastic_node_roles | to_json }}
+
+path.data: {{ elastic_data_dir }}
+path.logs: {{ elastic_log_dir }}
+
+network.host: {{ elk_ip }}
+http.port: {{ elastic_http_port }}
+transport.port: {{ elastic_transport_port }}
+
+discovery.seed_hosts:
+{% for host in groups.elasticsearch %}
+  - {{ hostvars[host].elk_ip }}:{{ elastic_transport_port }}
+{% endfor %}
+cluster.initial_master_nodes:
+{% for host in groups.elasticsearch %}
+  - {{ host }}
+{% endfor %}
+
+xpack.security.enabled: true
+xpack.security.transport.ssl.enabled: true
+xpack.security.transport.ssl.verification_mode: certificate
+xpack.security.transport.ssl.key: certs/{{ inventory_hostname }}/{{ inventory_hostname }}.key
+xpack.security.transport.ssl.certificate: certs/{{ inventory_hostname }}/{{ inventory_hostname }}.crt
+xpack.security.transport.ssl.certificate_authorities: [ "certs/ca/ca.crt" ]
+xpack.security.http.ssl.enabled: true
+xpack.security.http.ssl.key: certs/{{ inventory_hostname }}/{{ inventory_hostname }}.key
+xpack.security.http.ssl.certificate: certs/{{ inventory_hostname }}/{{ inventory_hostname }}.crt
+xpack.security.http.ssl.certificate_authorities: [ "certs/ca/ca.crt" ]
+
+{{ elastic_extra_config }}

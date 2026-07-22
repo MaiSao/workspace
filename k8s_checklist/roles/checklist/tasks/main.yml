@@ -1,0 +1,483 @@
+---
+- name: Show health checklist scope
+  debug:
+    msg:
+      - "Kubernetes service health checklist"
+      - "built-in services: {{ k8s_install_services | join(', ') if (k8s_install_services | length > 0) else 'none' }}"
+      - "extra services: {{ k8s_install_extra_services | join(', ') if (k8s_install_extra_services | length > 0) else 'none' }}"
+      - "host: {{ inventory_hostname }}"
+  tags:
+    - checklist
+    - health
+
+- name: Check enabled host services are active
+  command:
+    argv:
+      - systemctl
+      - is-active
+      - --quiet
+      - "{{ item.unit }}"
+  loop: "{{ checklist_systemd_units }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.unit }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - >-
+      (item.scope | default('all')) == 'all'
+      or ((item.scope | default('all')) == 'master' and inventory_hostname in k8s_master_hosts)
+      or ((item.scope | default('all')) == 'worker' and inventory_hostname in k8s_worker_hosts)
+  tags:
+    - checklist
+    - health
+
+- name: Check host-level service health commands
+  shell: |
+    set -Eeuo pipefail
+    {{ item.cmd }}
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_host_health_commands }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - >-
+      (item.scope | default('all')) == 'all'
+      or ((item.scope | default('all')) == 'master' and inventory_hostname in k8s_master_hosts)
+      or ((item.scope | default('all')) == 'worker' and inventory_hostname in k8s_worker_hosts)
+  tags:
+    - checklist
+    - health
+
+- name: Detect Keepalived VIP on master nodes
+  shell: |
+    set -Eeuo pipefail
+    ip -o addr show | grep -E 'inet[[:space:]]+{{ k8s_master_ip }}/'
+  args:
+    executable: /bin/bash
+  register: __checklist_keepalived_vip
+  changed_when: false
+  failed_when: false
+  when:
+    - setup_ha | bool
+    - "'keepalived' in k8s_install_services"
+    - inventory_hostname in k8s_master_hosts
+  tags:
+    - checklist
+    - health
+
+- name: Record Keepalived VIP presence on master nodes
+  set_fact:
+    checklist_keepalived_vip_present: "{{ (__checklist_keepalived_vip.rc | default(1) | int) == 0 }}"
+  when:
+    - setup_ha | bool
+    - "'keepalived' in k8s_install_services"
+    - inventory_hostname in k8s_master_hosts
+  tags:
+    - checklist
+    - health
+
+- name: Initialize Keepalived VIP holder list
+  set_fact:
+    checklist_keepalived_vip_holders: []
+  when:
+    - setup_ha | bool
+    - "'keepalived' in k8s_install_services"
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Build Keepalived VIP holder list
+  set_fact:
+    checklist_keepalived_vip_holders: >-
+      {{
+        (checklist_keepalived_vip_holders | default([]))
+        + ([item] if (hostvars[item].checklist_keepalived_vip_present | default(false) | bool) else [])
+      }}
+  loop: "{{ k8s_master_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  when:
+    - setup_ha | bool
+    - "'keepalived' in k8s_install_services"
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Assert Keepalived VIP is held by exactly one master
+  assert:
+    that:
+      - (checklist_keepalived_vip_holders | default([]) | length) == 1
+    fail_msg: >-
+      Keepalived VIP {{ k8s_master_ip }} should be present on exactly one
+      master, found {{ checklist_keepalived_vip_holders | default([]) | length }}
+      holder(s): {{ checklist_keepalived_vip_holders | default([]) | join(', ') }}.
+    success_msg: >-
+      Keepalived VIP {{ k8s_master_ip }} is held by
+      {{ checklist_keepalived_vip_holders | default([]) | join(', ') }}.
+  when:
+    - setup_ha | bool
+    - "'keepalived' in k8s_install_services"
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check Kubernetes API access from bootstrap master
+  command:
+    argv:
+      - kubectl
+      - version
+      - --client=false
+  changed_when: false
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check cluster-level service health commands
+  shell: |
+    set -Eeuo pipefail
+    {{ item.cmd }}
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_cluster_health_commands }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check inventory nodes exist in Kubernetes
+  command:
+    argv:
+      - kubectl
+      - get
+      - node
+      - >-
+        {{
+          hostvars[item].k8s_node_name
+          | default(hostvars[item].ansible_hostname)
+          | default(item)
+          | lower
+        }}
+  loop: "{{ k8s_cluster_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Count Ready Kubernetes nodes
+  shell: |
+    set -Eeuo pipefail
+    kubectl get nodes --no-headers | awk '$2 == "Ready" { count++ } END { print count + 0 }'
+  args:
+    executable: /bin/bash
+  register: __checklist_ready_nodes
+  changed_when: false
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Assert all inventory nodes are Ready
+  assert:
+    that:
+      - (__checklist_ready_nodes.stdout | int) == (k8s_cluster_hosts | length)
+    fail_msg: >-
+      Only {{ __checklist_ready_nodes.stdout | int }} of
+      {{ k8s_cluster_hosts | length }} inventory Kubernetes node(s) are Ready.
+  when:
+    - "'kubeadm' in k8s_install_services"
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check Kubernetes core pods are Ready
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ item.namespace }} wait --for=condition=Ready pod -l {{ item.selector }} --timeout={{ checklist_rollout_timeout }}
+    ready_count="$(
+      kubectl -n {{ item.namespace }} get pods -l {{ item.selector }} \
+        -o jsonpath='{range .items[*]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' |
+      awk '$1 == "True" { count++ } END { print count + 0 }'
+    )"
+    {% if item.expected_count is defined %}
+    test "${ready_count}" -eq "{{ item.expected_count | int }}"
+    {% else %}
+    test "${ready_count}" -ge "{{ item.min_count | default(1) | int }}"
+    {% endif %}
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_core_pod_selectors }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check Kubernetes APIService objects are Available
+  shell: |
+    set -Eeuo pipefail
+    status="$(
+      kubectl get apiservice {{ item.object_name }} \
+        -o jsonpath='{.status.conditions[?(@.type=="Available")].status}'
+    )"
+    test "${status}" = "True"
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_apiservices }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.object_name }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check expected Kubernetes service objects exist
+  shell: |
+    set -Eeuo pipefail
+    kubectl {% if item.namespace | default('') | length > 0 %}-n {{ item.namespace }} {% endif %}get {{ item.resource }} {{ item.object_name }}
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_kubernetes_objects }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.resource }}/{{ item.object_name }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check Kubernetes services have ready endpoints
+  shell: |
+    set -Eeuo pipefail
+    endpoints="$(
+      kubectl -n {{ item.namespace }} get endpoints {{ item.service }} \
+        -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null || true
+    )"
+    if [[ -z "${endpoints}" ]]; then
+      echo "{{ item.name }} has no ready endpoint addresses"
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_service_endpoints }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.namespace }}/{{ item.service }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check Kubernetes Service HTTP health through API proxy
+  shell: |
+    set -Eeuo pipefail
+    kubectl get --raw "/api/v1/namespaces/{{ item.namespace }}/services/http:{{ item.service }}:{{ item.port }}/proxy{{ item.path | default('/') }}" >/dev/null
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_kubernetes_service_http_checks }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.namespace }}/{{ item.service }}:{{ item.port }}{{ item.path | default('/') }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check Kubernetes service rollouts are healthy
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ item.namespace }} rollout status {{ item.resource }}/{{ item.object_name }} --timeout={{ checklist_rollout_timeout }}
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_kubernetes_rollouts }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.resource }}/{{ item.object_name }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check DaemonSets have all desired pods available
+  shell: |
+    set -Eeuo pipefail
+    desired="$(kubectl -n {{ item.namespace }} get daemonset {{ item.object_name }} -o jsonpath='{.status.desiredNumberScheduled}')"
+    available="$(kubectl -n {{ item.namespace }} get daemonset {{ item.object_name }} -o jsonpath='{.status.numberAvailable}')"
+    updated="$(kubectl -n {{ item.namespace }} get daemonset {{ item.object_name }} -o jsonpath='{.status.updatedNumberScheduled}')"
+    desired="${desired:-0}"
+    available="${available:-0}"
+    updated="${updated:-0}"
+    if [[ "${desired}" -le 0 || "${available}" -ne "${desired}" || "${updated}" -ne "${desired}" ]]; then
+      echo "{{ item.name }} unhealthy: desired=${desired}, updated=${updated}, available=${available}"
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_daemonset_availability }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.namespace }}/{{ item.object_name }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check StatefulSets have all replicas ready
+  shell: |
+    set -Eeuo pipefail
+    replicas="$(kubectl -n {{ item.namespace }} get statefulset {{ item.object_name }} -o jsonpath='{.spec.replicas}')"
+    ready="$(kubectl -n {{ item.namespace }} get statefulset {{ item.object_name }} -o jsonpath='{.status.readyReplicas}')"
+    replicas="${replicas:-0}"
+    ready="${ready:-0}"
+    if [[ "${replicas}" -le 0 || "${ready}" -ne "${replicas}" ]]; then
+      echo "{{ item.name }} unhealthy: replicas=${replicas}, ready=${ready}"
+      exit 1
+    fi
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_statefulset_availability }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.namespace }}/{{ item.object_name }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check Elasticsearch StatefulSet rollouts are healthy
+  shell: |
+    set -Eeuo pipefail
+    kubectl -n {{ elasticsearch_namespace }} rollout status statefulset/elasticsearch-{{ item.key }} --timeout={{ checklist_rollout_timeout }}
+  args:
+    executable: /bin/bash
+  loop: "{{ elasticsearch_node_sets | dict2items }}"
+  loop_control:
+    label: "elasticsearch-{{ item.key }}"
+  changed_when: false
+  when:
+    - "'elasticsearch' in k8s_install_extra_services"
+    - item.value.replicas | int > 0
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check node-level HTTP health endpoints
+  shell: |
+    set -Eeuo pipefail
+    {% for node in __checklist_http_target_hosts %}
+    echo "Checking {{ item.name }} on {{ node }} ({{ hostvars[node].k8s_ip | default(hostvars[node].ansible_host) }}:{{ item.port }})"
+    response="$(
+      timeout 5 bash -c 'exec 3<>/dev/tcp/{{ hostvars[node].k8s_ip | default(hostvars[node].ansible_host) }}/{{ item.port }}; printf "GET {{ item.path | default('/metrics') }} HTTP/1.0\r\nHost: {{ hostvars[node].k8s_ip | default(hostvars[node].ansible_host) }}\r\n\r\n" >&3; head -n 1 <&3'
+    )"
+    echo "${response}" | grep -Eq '^HTTP/[0-9.]+ (2|3)[0-9][0-9]'
+    {% endfor %}
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_node_http_checks }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    __checklist_http_target_hosts: >-
+      {{
+        k8s_master_hosts
+        if (item.scope | default('all')) == 'master'
+        else (
+          k8s_worker_hosts
+          if (item.scope | default('all')) == 'worker'
+          else k8s_cluster_hosts
+        )
+      }}
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - (__checklist_http_target_hosts | length) > 0
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check NodePort HTTP health endpoints
+  shell: |
+    set -Eeuo pipefail
+    response="$(
+      timeout 5 bash -c 'exec 3<>/dev/tcp/{{ item.host }}/{{ item.port }}; printf "GET {{ item.path | default('/') }} HTTP/1.0\r\nHost: {{ item.host }}\r\n\r\n" >&3; head -n 1 <&3'
+    )"
+    echo "${response}" | grep -Eq '^HTTP/[0-9.]+ ((2|3)[0-9][0-9]|401|403)'
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_nodeport_http_checks }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.host }}:{{ item.port }}{{ item.path | default('/') }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Check TCP health endpoints
+  shell: |
+    set -Eeuo pipefail
+    timeout 5 bash -c 'cat < /dev/null > /dev/tcp/{{ item.host }}/{{ item.port }}'
+  args:
+    executable: /bin/bash
+  loop: "{{ checklist_tcp_checks }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ item.host }}:{{ item.port }}"
+  changed_when: false
+  when:
+    - item.enabled | bool
+    - inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health
+
+- name: Show health checklist completion
+  debug:
+    msg: "Service health checklist completed successfully."
+  when: inventory_hostname == k8s_bootstrap_master
+  tags:
+    - checklist
+    - health

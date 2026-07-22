@@ -37,6 +37,18 @@ k8s_master_ip: 172.20.3.155
 ha_apiserver_port: 8443
 interface_k8s: eth0
 
+# HAProxy keeps Kubernetes API config in a dedicated fragment so existing
+# HAProxy deployments can keep their main /etc/haproxy/haproxy.cfg.
+haproxy_k8s_conf_dir: /etc/haproxy/conf.d
+haproxy_k8s_fragment_name: k8s-apiserver.cfg
+haproxy_k8s_frontend_name: k8s_apiserver
+haproxy_k8s_backend_name: k8s_apiserver_backend
+# HAProxy exporter scrapes this local HTTP stats endpoint from a hostNetwork pod.
+haproxy_stats_listener_name: k8s_haproxy_stats
+haproxy_stats_bind_host: 127.0.0.1
+haproxy_stats_port: 8404
+haproxy_stats_bind_address: "{{ haproxy_stats_bind_host }}:{{ haproxy_stats_port }}"
+
 # Keepalived values shared by every control-plane node.
 keepalived_auth_pass: "3333"
 keepalived_vip_prefix: 24
@@ -46,6 +58,14 @@ keepalived_vrrp_router_id: auto
 # one, regardless of cluster size. Keep below 255 because 255 is reserved for
 # the VRRP address owner. An odd control-plane count is recommended for etcd.
 keepalived_priority_base: 200
+
+# Keepalived keeps Kubernetes API VIP config in a dedicated fragment so
+# existing Keepalived deployments can keep their main keepalived.conf.
+keepalived_conf_dir: /etc/keepalived/conf.d
+keepalived_k8s_fragment_name: k8s-apiserver-vip.conf
+keepalived_k8s_vrrp_instance_name: K8S_APISERVER_VIP
+keepalived_k8s_vrrp_script_name: chk_k8s_apiserver
+keepalived_k8s_check_script_path: /etc/keepalived/check_k8s_apiserver.sh
 
 #---------------------------------------------------
 # Container registry

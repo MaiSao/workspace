@@ -1,0 +1,27 @@
+[Unit]
+Description=Elasticsearch
+Documentation=https://www.elastic.co
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ elastic_user }}
+Group={{ elastic_group }}
+RuntimeDirectory=elasticsearch
+RuntimeDirectoryMode=0750
+Environment=ES_HOME={{ elastic_install_root }}/elasticsearch
+Environment=ES_PATH_CONF={{ elastic_config_dir }}
+Environment=PID_DIR={{ elastic_pid_dir }}
+Environment=ES_TMPDIR=/tmp
+WorkingDirectory={{ elastic_install_root }}/elasticsearch
+ExecStart={{ elastic_install_root }}/elasticsearch/bin/elasticsearch -p {{ elastic_pid_dir }}/elasticsearch.pid
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
+LimitNPROC=4096
+LimitMEMLOCK=infinity
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,74 @@
+---
+#===============================================================================
+# Elasticsearch + Kibana host-service settings for EC2
+#===============================================================================
+
+elastic_version: "8.19.9"
+elastic_arch: linux-x86_64
+
+elastic_cluster_name: es-hcm
+elastic_environment_label: production
+
+elastic_user: elasticsearch
+elastic_group: elasticsearch
+elastic_install_root: /opt/elastic
+elastic_config_dir: /etc/elasticsearch
+elastic_data_dir: /u01/elasticsearch/data
+elastic_log_dir: /u01/elasticsearch/log
+elastic_pid_dir: /run/elasticsearch
+
+elastic_http_port: 9200
+elastic_transport_port: 9300
+elastic_node_roles:
+  - master
+  - data
+
+elastic_heap_size: 2g
+elastic_extra_config: |
+  thread_pool.write.size: 8
+  thread_pool.write.queue_size: 8000
+  thread_pool.search.size: 4
+  thread_pool.search.queue_size: 2000
+  indices.memory.index_buffer_size: 35%
+  indices.recovery.max_bytes_per_sec: 2gb
+  indices.recovery.max_concurrent_operations: 2
+  cluster.routing.allocation.node_concurrent_recoveries: 2
+  cluster.routing.allocation.node_initial_primaries_recoveries: 2
+  cluster.routing.allocation.cluster_concurrent_rebalance: 2
+  indices.recovery.recovery_activity_timeout: 30m
+  indices.recovery.internal_action_timeout: 2m
+  indices.recovery.max_concurrent_file_chunks: 2
+  cluster.routing.allocation.enable: all
+  cluster.routing.allocation.balance.shard: 0.45
+  cluster.routing.allocation.balance.index: 0.55
+  cluster.routing.allocation.allow_rebalance: always
+
+elastic_basic_auth:
+  username: elastic
+  password: "123456a@"
+
+elastic_kibana_auth:
+  username: kibana_system
+  password: "123456a@"
+
+elastic_download_base_url: https://artifacts.elastic.co/downloads
+elastic_artifact_cache: /opt/elastic/artifacts
+elasticsearch_archive_url: "{{ elastic_download_base_url }}/elasticsearch/elasticsearch-{{ elastic_version }}-{{ elastic_arch }}.tar.gz"
+kibana_archive_url: "{{ elastic_download_base_url }}/kibana/kibana-{{ elastic_version }}-{{ elastic_arch }}.tar.gz"
+
+elastic_cert_work_dir: /root/elasticsearch-certs
+elastic_cert_bundle_remote: /root/elasticsearch-certs.tar.gz
+elastic_cert_bundle_local: /tmp/elasticsearch-certs-{{ elastic_cluster_name }}.tar.gz
+
+kibana_user: kibana
+kibana_group: kibana
+kibana_install_root: /opt/elastic
+kibana_config_dir: /etc/kibana
+kibana_data_dir: /u01/kibana/data
+kibana_log_dir: /u01/kibana/log
+kibana_pid_dir: /run/kibana
+kibana_port: 5601
+kibana_base_path: /kibana
+kibana_security_encryption_key: xpack_security_encryption_key__1234
+kibana_saved_objects_encryption_key: saved_objects_encryption_key_5678
+kibana_reporting_encryption_key: reporting_encryption_key_987654321

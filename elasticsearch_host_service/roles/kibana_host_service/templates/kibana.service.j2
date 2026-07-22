@@ -1,0 +1,22 @@
+[Unit]
+Description=Kibana
+Documentation=https://www.elastic.co
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ kibana_user }}
+Group={{ kibana_group }}
+RuntimeDirectory=kibana
+RuntimeDirectoryMode=0750
+Environment=KBN_PATH_CONF={{ kibana_config_dir }}
+WorkingDirectory={{ kibana_install_root }}/kibana
+ExecStart={{ kibana_install_root }}/kibana/bin/kibana --pid.file={{ kibana_pid_dir }}/kibana.pid
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

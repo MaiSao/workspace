@@ -45,8 +45,7 @@ ip_pools_exporter_image: vht/prometheus-custom-exporter:1.0.3
 snmp_exporter_image: vht/snmp-exporter:v0.15.0-vht
 snmp_switch_exporter_image: vht/snmp-switch-exporter:v0.15.0
 haproxy_exporter_image: vht/haproxy-exporter:v0.15.0
-keepalived_exporter_image: vht/keepalived-exporter:v1.7.1
-keepalived_exporter_tools_image: vht/busybox:1.37.0
+keepalived_exporter_image: vht/keepalived-exporter:v1.7.1-el8
 
 # Extra services
 fluentbit_image: efk/fluent-bit:4.2.2
@@ -146,7 +145,7 @@ service_image_requirements:
   snmp_switch_exporter:
     - "{{ snmp_switch_exporter_image }}"
   haproxy_exporter: "{{ [haproxy_exporter_image] if setup_ha | default(true) | bool else [] }}"
-  keepalived_exporter: "{{ [keepalived_exporter_image, keepalived_exporter_tools_image] if setup_ha | default(true) | bool else [] }}"
+  keepalived_exporter: "{{ [keepalived_exporter_image] if setup_ha | default(true) | bool else [] }}"
   ip_pools_exporter: "{{ [ip_pools_exporter_image] if multus_sriov | default(false) | bool else [] }}"
   k8s_tuning: []
 

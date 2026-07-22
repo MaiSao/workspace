@@ -1,0 +1,108 @@
+#---------------------------------------------------
+# K8S init configuration
+#---------------------------------------------------
+# default variables, only change if u know what 
+# you are doing
+#---------------------------------------------------
+k8s_version: v1.31.4
+containerd_sandbox_image: 'registry.k8s.io/pause:3.10'
+criSocket: "unix:///run/containerd/containerd.sock"
+certificateValidityPeriod: 876000h
+caCertificateValidityPeriod: 876000h
+apiserver_audit_log_maxage: 30
+apiserver_audit_log_maxbackup: 10
+apiserver_audit_log_maxsize: 100
+apiserver_authorization_mode: Node,RBAC
+apiserver_event_ttl: 168h
+apiserver_kubelet_preferred_address_types: InternalDNS,InternalIP,Hostname,ExternalDNS,ExternalIP
+apiserver_service_node_port_range: 100-50000
+apiserver_timeoutForControlPlane: 4m0s
+apiserver_profiling: false
+controllerManager_cluster_signing_duration: 876000h
+controllerManager_terminated_pod_gc_threshold: 555
+controllerManager_profiling: false
+dns_type: CoreDNS
+scheduler_bind_address: 0.0.0.0
+scheduler_profiling: false
+kubelet_healthzBindAddress: 0.0.0.0
+kubelet_healthzPort: 10248
+kubelet_readOnlyPort: 10255
+kubelet_imageGCHighThresholdPercent: 85
+kubelet_imageGCLowThresholdPercent: 80
+kubelet_evictionHard: |-
+  memory.available: "100Mi"
+  nodefs.available: "5%"
+  nodefs.inodesFree: "5%"
+  imagefs.available: "10%"
+
+kubelet_kubeReserved: |-
+  cpu: "300m"
+  memory: "512Mi"
+kubelet_systemReserved: |-
+  cpu: "200m"
+  memory: "512Mi"
+kubelet_serverTLSBootstrap: true
+kubelet_reservedSystemCPUs: ''
+kubeproxy_healthzBindAddress: 0.0.0.0:10256
+kubeproxy_metricsBindAddress: 0.0.0.0:10249
+feature_gates:
+  EtcdLearnerMode: false
+#-----------------------------------------------
+# Cluster Networking
+#-----------------------------------------------
+master_hybrid: true                              # To allow schedule pods on master node (master+worker hybrid mode)
+clusterName: kubernetes
+networking_dnsDomain: cluster.local
+ip_autodetection_method_cidr: 1.255.0.0/24       # If use calico, this is required to set default K8S network       
+interface_k8s: eth0                              # interface used for K8S. In reality, it could be a bond0.1005, for example
+networking_podSubnet: 192.168.0.0/16              # IPAM CIDR for pods. This should match LLD
+networking_serviceSubnet: 10.96.0.0/12           # IAMP CIDR for services. This should match LLD.
+kubeproxy_bindAddress: 0.0.0.0                   # Kube-proxy bind all interfaces.
+controllerManager_bind_address: 0.0.0.0          # Kube controller Manager bind all interfaces
+localAPIEndpointAddress: "{{ hostvars[groups['master'][0]]['k8s_ip'] }}" # The node that do K8s Bootstrap, default is first master node
+localAPIEndpointPort: 6443                                               # API server port
+ha_apiserver_port: 8443               # HAProxy port binding for K8S API server
+k8s_master_ip: 1.255.0.155            # Keepalived VRRP VIP for K8S 
+cni_prime: calico                     # experimental for support installing any primary CNI. For now, just let it here
+multi_network: true                   # If use additional CNI, set it to true to install multus+whereabouts.
+multus_sriov: false                   # Require multi_network is true
+# list_pfs_to_vfs:
+#   - { pf_name: "ens1f1", nofvfs: 32}
+#   - { pf_name: "ens15f1", nofvfs: 32}
+#   - { pf_name: "ens1f2", nofvfs: 32}
+#   - { pf_name: "ens15f2", nofvfs: 32}
+
+#---------------------------------------------------
+# keepalived VRRP
+# --------------------------------------------------
+keepalived_auth_pass: "3333"          # Authentication password for keepalived VRRP
+keepalived_vrrp_router_id: 151        # VRRP router ID, must match for all VRRP instances (master nodes)
+
+#---------------------------------------------------
+# Container registry endpoint settings
+#---------------------------------------------------
+# Image name example from this setting:
+# docker-registry:4000/registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.14.0
+registry_protocol: https
+registry_ip: 10.55.112.146
+registry_name: harbor-registry
+registry_port: 8017
+imageRepositoryProject: registry.k8s.io
+
+#---------------------------------------------------
+# Red Hat dnf/yum repo endpoint setting
+#---------------------------------------------------
+repo_ip: 10.55.112.131
+repo_port: 80
+
+#---------------------------------------------------
+# Other k8s configs: etcd data dir, audit dir,...
+#---------------------------------------------------
+k8s_auditlog_dir: /u01/k8saudit                                               # K8s Audit Logs directory 
+etcd_backup_dir: /u01/etcdbackup                                              # etcd backup directory
+etcdDataDir: /u01/etcd/                                                       # etcd data directory
+containerd_root_dir: /u01/containerd                                          # containerd data directory
+certificatesDir: /etc/kubernetes/pki                                          # K8s certs directories
+apiserver_kubelet_certificate_authority: "{{ certificatesDir }}/ca.crt"       # K8s path to CA certs
+master_user: ["root", "vt_admin"]                                             # user that have admin access to k8s cluster on master nodes.
+__rerun_bootstrap: true

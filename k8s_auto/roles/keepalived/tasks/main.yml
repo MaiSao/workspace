@@ -127,10 +127,111 @@
     - "'k8s-master' in group_names"
     - setup_ha | default(true) | bool
 
-- name: Render Keepalived VRRP configuration
+- name: Create Keepalived config fragment directory
+  file:
+    path: "{{ keepalived_conf_dir | default('/etc/keepalived/conf.d') }}"
+    state: directory
+    mode: '0755'
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Check existing Keepalived main config
+  stat:
+    path: /etc/keepalived/keepalived.conf
+  register: __keepalived_main_config
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Read existing Keepalived main config
+  slurp:
+    src: /etc/keepalived/keepalived.conf
+  register: __keepalived_main_config_slurp
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+    - __keepalived_main_config.stat.exists
+
+- name: Detect legacy k8s_auto Keepalived main config
+  set_fact:
+    __keepalived_legacy_k8s_auto_main_config: >-
+      {{
+        (__keepalived_main_config_slurp.content | default('') | b64decode)
+        is search('vrrp_instance[[:space:]]+')
+        and
+        (__keepalived_main_config_slurp.content | default('') | b64decode)
+        is search(k8s_master_ip | regex_escape)
+      }}
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+    - __keepalived_main_config.stat.exists
+
+- name: Warn when migrating Kubernetes VIP out of Keepalived main config
+  debug:
+    msg: >-
+      WARNING: /etc/keepalived/keepalived.conf already contains Kubernetes VIP
+      {{ k8s_master_ip }}. The role will replace the main file with a base
+      include-only config and keep the Kubernetes VIP only in
+      {{ keepalived_conf_dir | default('/etc/keepalived/conf.d') }}/{{ keepalived_k8s_fragment_name | default('k8s-apiserver-vip.conf') }}
+      to avoid duplicate VRRP/VIP definitions.
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+    - __keepalived_legacy_k8s_auto_main_config | default(false) | bool
+
+- name: Create Keepalived main config when absent or legacy k8s_auto config is detected
+  copy:
+    dest: /etc/keepalived/keepalived.conf
+    mode: '0644'
+    content: |
+      ! /etc/keepalived/keepalived.conf
+      ! Base Keepalived configuration managed by k8s_auto when no prior config exists.
+
+      global_defs {
+          enable_script_security
+          router_id K8S_AUTO
+      }
+
+      include {{ keepalived_conf_dir | default('/etc/keepalived/conf.d') }}/*.conf
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+    - not __keepalived_main_config.stat.exists or (__keepalived_legacy_k8s_auto_main_config | default(false) | bool)
+
+- name: Ensure Keepalived main config includes fragments
+  lineinfile:
+    path: /etc/keepalived/keepalived.conf
+    line: "include {{ keepalived_conf_dir | default('/etc/keepalived/conf.d') }}/*.conf"
+    insertafter: EOF
+    state: present
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+    - __keepalived_main_config.stat.exists
+    - not (__keepalived_legacy_k8s_auto_main_config | default(false) | bool)
+
+- name: Remove stale Keepalived Kubernetes API config fragment
+  file:
+    path: "{{ keepalived_conf_dir | default('/etc/keepalived/conf.d') }}/kubernetes.conf"
+    state: absent
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Render Keepalived Kubernetes API VIP fragment
   template:
     src: keepalived.conf.j2
-    dest: /etc/keepalived/keepalived.conf
+    dest: "{{ keepalived_conf_dir | default('/etc/keepalived/conf.d') }}/{{ keepalived_k8s_fragment_name | default('k8s-apiserver-vip.conf') }}"
     mode: '0644'
   when:
     - "'keepalived' in k8s_install_services"
@@ -140,8 +241,21 @@
 - name: Render Keepalived Kubernetes API health check
   template:
     src: check_apiserver.sh.j2
-    dest: /etc/keepalived/check_apiserver.sh
+    dest: "{{ keepalived_k8s_check_script_path | default('/etc/keepalived/check_k8s_apiserver.sh') }}"
     mode: '0755'
+  when:
+    - "'keepalived' in k8s_install_services"
+    - "'k8s-master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Validate Keepalived configuration
+  command:
+    argv:
+      - keepalived
+      - -t
+      - -f
+      - /etc/keepalived/keepalived.conf
+  changed_when: false
   when:
     - "'keepalived' in k8s_install_services"
     - "'k8s-master' in group_names"

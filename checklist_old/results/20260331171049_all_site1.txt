@@ -1,0 +1,2276 @@
+{
+  "MASTER": {
+    "list_files": [
+      "/etc/systemd/system/containerd.service",
+      "/etc/containerd/config.toml",
+      "/var/lib/kubelet/config.yaml",
+      "/etc/kubernetes/manifests/etcd.yaml",
+      "/etc/kubernetes/manifests/kube-apiserver.yaml",
+      "/etc/kubernetes/manifests/kube-controller-manager.yaml",
+      "/etc/kubernetes/manifests/kube-scheduler.yaml",
+      "/etc/crictl.yaml",
+      "/etc/systemd/system/kubelet.service.d/10-kubeadm.conf",
+      "/etc/kubernetes/audit-policy.yaml",
+      "/etc/sysctl.conf"
+    ],
+    "list_servers": [
+      {
+        "hostname": "BCHNICOM02",
+        "result": [
+          {
+            "filename": "config.toml",
+            "value": [
+              {
+                "type": "remove",
+                "key": "imports",
+                "value": [
+                  [
+                    0,
+                    "/etc/containerd/config.toml"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": "root",
+                "value": [
+                  "/u01/containerd",
+                  "/containerd"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri"
+                ],
+                "value": [
+                  [
+                    "x509_key_pair_streaming",
+                    {
+                      "tls_cert_file": "",
+                      "tls_key_file": ""
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri"
+                ],
+                "value": [
+                  [
+                    "ignore_deprecation_warnings",
+                    []
+                  ],
+                  [
+                    "image_pull_with_sync_fs",
+                    false
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "plugins",
+                  "io.containerd.tracing.processor.v1.otlp"
+                ],
+                "value": [
+                  [
+                    "endpoint",
+                    ""
+                  ],
+                  [
+                    "insecure",
+                    0
+                  ],
+                  [
+                    "protocol",
+                    ""
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": "plugins",
+                "value": [
+                  [
+                    "io.containerd.snapshotter.v1.btrfs",
+                    {
+                      "root_path": ""
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": "",
+                "value": [
+                  [
+                    "plugin",
+                    {
+                      "io.containerd.grpc.v1.cri": {
+                        "registry": {
+                          "mirrors": {
+                            "harbor-registry:8018": {
+                              "endpoint": [
+                                "https://harbor-registry:8018"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "config.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": "cpuManagerReconcilePeriod",
+                "value": [
+                  "0s",
+                  "5s"
+                ]
+              },
+              {
+                "type": "change",
+                "key": "healthzBindAddress",
+                "value": [
+                  "127.0.0.1",
+                  "0.0.0.0"
+                ]
+              },
+              {
+                "type": "add",
+                "key": "",
+                "value": [
+                  [
+                    "imageGCHighThresholdPercent",
+                    85
+                  ],
+                  [
+                    "imageGCLowThresholdPercent",
+                    80
+                  ],
+                  [
+                    "resolvConf",
+                    ""
+                  ],
+                  [
+                    "cpuManagerPolicy",
+                    "static"
+                  ],
+                  [
+                    "kubeReserved",
+                    {
+                      "cpu": "8",
+                      "memory": "12Gi"
+                    }
+                  ],
+                  [
+                    "reservedSystemCPUs",
+                    "0-11"
+                  ],
+                  [
+                    "systemReserved",
+                    {
+                      "cpu": "4",
+                      "memory": "8Gi"
+                    }
+                  ],
+                  [
+                    "evictionHard",
+                    {
+                      "memory": {
+                        "available": "1Gi"
+                      },
+                      "nodefs": {
+                        "available": "5%",
+                        "inodesFree": "5%"
+                      },
+                      "imagefs": {
+                        "available": "10%"
+                      }
+                    }
+                  ],
+                  [
+                    "serverTLSBootstrap",
+                    true
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "etcd.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command",
+                  5
+                ],
+                "value": [
+                  "--data-dir=/u01/etcd/",
+                  "--data-dir=/etcd/data"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "image"
+                ],
+                "value": [
+                  "harbor-registry:8018/registry.k8s.io/etcd:3.5.24-0",
+                  "harbor-registry:8018/registry.k8s.io/etcd:3.5.15-0"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "100m",
+                  "250m"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "memory"
+                ],
+                "value": [
+                  "100Mi",
+                  "4Gi"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": 1,
+                      "memory": "8Gi"
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "volumeMounts",
+                  0,
+                  "mountPath"
+                ],
+                "value": [
+                  "/u01/etcd/",
+                  "/etcd/data/"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "volumes",
+                  1,
+                  "hostPath",
+                  "path"
+                ],
+                "value": [
+                  "/u01/etcd/",
+                  "/etcd/data/"
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-apiserver.yaml",
+            "value": [
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    34,
+                    "--profiling=false"
+                  ],
+                  [
+                    35,
+                    "--kubelet-certificate-authority=/etc/kubernetes/pki/ca.crt"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "250m",
+                  1
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "4Gi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": 2,
+                      "memory": "8Gi"
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-controller-manager.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command",
+                  6
+                ],
+                "value": [
+                  "--cluster-cidr=172.16.0.0/16",
+                  "--cluster-cidr=192.168.0.0/16"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    20,
+                    "--profiling=false"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "200m",
+                  "250m"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "500Mi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": "500m",
+                      "memory": "1Gi"
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-scheduler.yaml",
+            "value": [
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    6,
+                    "--profiling=false"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "250Mi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": "200m",
+                      "memory": "500Mi"
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "sysctl.conf",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "net.ipv4.tcp_keepalive_time"
+                ],
+                "value": [
+                  "60",
+                  "300"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.ipv4.tcp_keepalive_probes"
+                ],
+                "value": [
+                  "3",
+                  "9"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.ipv4.tcp_keepalive_intvl"
+                ],
+                "value": [
+                  "10",
+                  "75"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.core.rmem_max"
+                ],
+                "value": [
+                  "16777216",
+                  "212992"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.core.wmem_max"
+                ],
+                "value": [
+                  "16777216",
+                  "212992"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.core.rmem_default"
+                ],
+                "value": [
+                  "16777216",
+                  "262144"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.core.wmem_default"
+                ],
+                "value": [
+                  "16777216",
+                  "262144"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.core.optmem_max"
+                ],
+                "value": [
+                  "40960",
+                  "81920"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.ipv4.tcp_rmem"
+                ],
+                "value": [
+                  "4096 87380 16777216",
+                  "4096 87380 6291456"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.ipv4.tcp_wmem"
+                ],
+                "value": [
+                  "4096 65536 16777216",
+                  "4096 87380 16777216"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "vm.swappiness"
+                ],
+                "value": [
+                  "0",
+                  "10"
+                ]
+              },
+              {
+                "type": "add",
+                "key": "",
+                "value": [
+                  [
+                    "vm.zone_reclaim_mode",
+                    "0"
+                  ],
+                  [
+                    "fs.file-max",
+                    "50000000"
+                  ],
+                  [
+                    "vm.drop_caches",
+                    "0"
+                  ],
+                  [
+                    "vm.min_free_kbytes",
+                    "2097152"
+                  ],
+                  [
+                    "kernel.pid_max",
+                    "4194304"
+                  ],
+                  [
+                    "net.ipv4.ip_local_port_range",
+                    "2000 65000"
+                  ],
+                  [
+                    "net.ipv4.tcp_fin_timeout",
+                    "10"
+                  ],
+                  [
+                    "net.ipv4.tcp_synack_retries",
+                    "5"
+                  ],
+                  [
+                    "net.ipv4.tcp_syn_retries",
+                    "6"
+                  ],
+                  [
+                    "net.ipv4.tcp_rfc1337",
+                    "1"
+                  ],
+                  [
+                    "net.ipv4.conf.all.log_martians",
+                    "1"
+                  ],
+                  [
+                    "net.ipv4.conf.default.log_martians",
+                    "1"
+                  ],
+                  [
+                    "net.ipv4.conf.all.rp_filter",
+                    "0"
+                  ],
+                  [
+                    "net.ipv4.conf.all.send_redirects",
+                    "0"
+                  ],
+                  [
+                    "net.ipv4.conf.default.send_redirects",
+                    "0"
+                  ],
+                  [
+                    "net.core.somaxconn",
+                    "65535"
+                  ],
+                  [
+                    "net.core.netdev_max_backlog",
+                    "65535"
+                  ],
+                  [
+                    "net.ipv4.tcp_max_syn_backlog",
+                    "65535"
+                  ],
+                  [
+                    "net.ipv4.tcp_max_tw_buckets",
+                    "262144"
+                  ],
+                  [
+                    "net.ipv4.tcp_tw_reuse",
+                    "0"
+                  ],
+                  [
+                    "net.ipv4.tcp_slow_start_after_idle",
+                    "0"
+                  ],
+                  [
+                    "net.ipv4.udp_rmem_min",
+                    "4096"
+                  ],
+                  [
+                    "net.ipv4.udp_wmem_min",
+                    "4096"
+                  ],
+                  [
+                    "net.ipv4.conf.all.accept_source_route",
+                    "0"
+                  ],
+                  [
+                    "net.core.netdev_budget",
+                    "1000"
+                  ],
+                  [
+                    "fs.inotify.max_user_instances",
+                    "524288"
+                  ],
+                  [
+                    "fs.inotify.max_user_watches",
+                    "524288"
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": "",
+                "value": [
+                  [
+                    "vm.max_map_count",
+                    "1048575"
+                  ],
+                  [
+                    "net.ipv4.tcp_sack",
+                    "1"
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hostname": "BCHNICOM03",
+        "result": [
+          {
+            "filename": "config.toml",
+            "value": [
+              {
+                "type": "remove",
+                "key": "imports",
+                "value": [
+                  [
+                    0,
+                    "/etc/containerd/config.toml"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": "root",
+                "value": [
+                  "/u01/containerd",
+                  "/containerd"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri"
+                ],
+                "value": [
+                  [
+                    "x509_key_pair_streaming",
+                    {
+                      "tls_cert_file": "",
+                      "tls_key_file": ""
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri"
+                ],
+                "value": [
+                  [
+                    "ignore_deprecation_warnings",
+                    []
+                  ],
+                  [
+                    "image_pull_with_sync_fs",
+                    false
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "plugins",
+                  "io.containerd.tracing.processor.v1.otlp"
+                ],
+                "value": [
+                  [
+                    "endpoint",
+                    ""
+                  ],
+                  [
+                    "insecure",
+                    0
+                  ],
+                  [
+                    "protocol",
+                    ""
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": "plugins",
+                "value": [
+                  [
+                    "io.containerd.snapshotter.v1.btrfs",
+                    {
+                      "root_path": ""
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": "",
+                "value": [
+                  [
+                    "plugin",
+                    {
+                      "io.containerd.grpc.v1.cri": {
+                        "registry": {
+                          "mirrors": {
+                            "harbor-registry:8018": {
+                              "endpoint": [
+                                "https://harbor-registry:8018"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "config.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": "cpuManagerReconcilePeriod",
+                "value": [
+                  "0s",
+                  "5s"
+                ]
+              },
+              {
+                "type": "change",
+                "key": "healthzBindAddress",
+                "value": [
+                  "127.0.0.1",
+                  "0.0.0.0"
+                ]
+              },
+              {
+                "type": "add",
+                "key": "",
+                "value": [
+                  [
+                    "imageGCHighThresholdPercent",
+                    85
+                  ],
+                  [
+                    "imageGCLowThresholdPercent",
+                    80
+                  ],
+                  [
+                    "resolvConf",
+                    ""
+                  ],
+                  [
+                    "cpuManagerPolicy",
+                    "static"
+                  ],
+                  [
+                    "kubeReserved",
+                    {
+                      "cpu": "8",
+                      "memory": "12Gi"
+                    }
+                  ],
+                  [
+                    "reservedSystemCPUs",
+                    "0-11"
+                  ],
+                  [
+                    "systemReserved",
+                    {
+                      "cpu": "4",
+                      "memory": "8Gi"
+                    }
+                  ],
+                  [
+                    "evictionHard",
+                    {
+                      "memory": {
+                        "available": "1Gi"
+                      },
+                      "nodefs": {
+                        "available": "5%",
+                        "inodesFree": "5%"
+                      },
+                      "imagefs": {
+                        "available": "10%"
+                      }
+                    }
+                  ],
+                  [
+                    "serverTLSBootstrap",
+                    true
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "etcd.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command",
+                  5
+                ],
+                "value": [
+                  "--data-dir=/u01/etcd/",
+                  "--data-dir=/etcd/data"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "image"
+                ],
+                "value": [
+                  "harbor-registry:8018/registry.k8s.io/etcd:3.5.24-0",
+                  "harbor-registry:8018/registry.k8s.io/etcd:3.5.15-0"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "100m",
+                  "250m"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "memory"
+                ],
+                "value": [
+                  "100Mi",
+                  "4Gi"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": 1,
+                      "memory": "8Gi"
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "volumeMounts",
+                  0,
+                  "mountPath"
+                ],
+                "value": [
+                  "/u01/etcd/",
+                  "/etcd/data/"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "volumes",
+                  1,
+                  "hostPath",
+                  "path"
+                ],
+                "value": [
+                  "/u01/etcd/",
+                  "/etcd/data/"
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-apiserver.yaml",
+            "value": [
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    34,
+                    "--profiling=false"
+                  ],
+                  [
+                    35,
+                    "--kubelet-certificate-authority=/etc/kubernetes/pki/ca.crt"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "250m",
+                  1
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "4Gi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": 2,
+                      "memory": "8Gi"
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-controller-manager.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command",
+                  6
+                ],
+                "value": [
+                  "--cluster-cidr=172.16.0.0/16",
+                  "--cluster-cidr=192.168.0.0/16"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    20,
+                    "--profiling=false"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "200m",
+                  "250m"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "500Mi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": "500m",
+                      "memory": "1Gi"
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-scheduler.yaml",
+            "value": [
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    6,
+                    "--profiling=false"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "250Mi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": "200m",
+                      "memory": "500Mi"
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "sysctl.conf",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "fs.file-max"
+                ],
+                "value": [
+                  "39435784",
+                  "50000000"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.ipv4.tcp_keepalive_time"
+                ],
+                "value": [
+                  "7200",
+                  "300"
+                ]
+              },
+              {
+                "type": "add",
+                "key": "",
+                "value": [
+                  [
+                    "fs.inotify.max_user_instances",
+                    "524288"
+                  ],
+                  [
+                    "fs.inotify.max_user_watches",
+                    "524288"
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": "",
+                "value": [
+                  [
+                    "vm.nr_hugepages",
+                    "2048"
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hostname": "BCHNICOM01",
+        "result": [
+          {
+            "filename": "config.toml",
+            "value": [
+              {
+                "type": "remove",
+                "key": "imports",
+                "value": [
+                  [
+                    0,
+                    "/etc/containerd/config.toml"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": "root",
+                "value": [
+                  "/u01/containerd",
+                  "/containerd"
+                ]
+              },
+              {
+                "type": "remove",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri",
+                  "registry",
+                  "mirrors"
+                ],
+                "value": [
+                  [
+                    "ems-registry:8696",
+                    {}
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri"
+                ],
+                "value": [
+                  [
+                    "x509_key_pair_streaming",
+                    {
+                      "tls_cert_file": "",
+                      "tls_key_file": ""
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri"
+                ],
+                "value": [
+                  [
+                    "ignore_deprecation_warnings",
+                    []
+                  ],
+                  [
+                    "image_pull_with_sync_fs",
+                    false
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "plugins",
+                  "io.containerd.tracing.processor.v1.otlp"
+                ],
+                "value": [
+                  [
+                    "endpoint",
+                    ""
+                  ],
+                  [
+                    "insecure",
+                    0
+                  ],
+                  [
+                    "protocol",
+                    ""
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": "plugins",
+                "value": [
+                  [
+                    "io.containerd.snapshotter.v1.btrfs",
+                    {
+                      "root_path": ""
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": "",
+                "value": [
+                  [
+                    "plugin",
+                    {
+                      "io.containerd.grpc.v1.cri": {
+                        "registry": {
+                          "mirrors": {
+                            "harbor-registry:8018": {
+                              "endpoint": [
+                                "https://harbor-registry:8018"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "config.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": "cpuManagerReconcilePeriod",
+                "value": [
+                  "0s",
+                  "5s"
+                ]
+              },
+              {
+                "type": "change",
+                "key": "healthzBindAddress",
+                "value": [
+                  "127.0.0.1",
+                  "0.0.0.0"
+                ]
+              },
+              {
+                "type": "add",
+                "key": "",
+                "value": [
+                  [
+                    "imageGCHighThresholdPercent",
+                    85
+                  ],
+                  [
+                    "imageGCLowThresholdPercent",
+                    80
+                  ],
+                  [
+                    "resolvConf",
+                    ""
+                  ],
+                  [
+                    "cpuManagerPolicy",
+                    "static"
+                  ],
+                  [
+                    "kubeReserved",
+                    {
+                      "cpu": "8",
+                      "memory": "12Gi"
+                    }
+                  ],
+                  [
+                    "reservedSystemCPUs",
+                    "0-11"
+                  ],
+                  [
+                    "systemReserved",
+                    {
+                      "cpu": "4",
+                      "memory": "8Gi"
+                    }
+                  ],
+                  [
+                    "evictionHard",
+                    {
+                      "memory": {
+                        "available": "1Gi"
+                      },
+                      "nodefs": {
+                        "available": "5%",
+                        "inodesFree": "5%"
+                      },
+                      "imagefs": {
+                        "available": "10%"
+                      }
+                    }
+                  ],
+                  [
+                    "serverTLSBootstrap",
+                    true
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "etcd.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command",
+                  5
+                ],
+                "value": [
+                  "--data-dir=/u01/etcd/",
+                  "--data-dir=/etcd/data"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "image"
+                ],
+                "value": [
+                  "harbor-registry:8018/registry.k8s.io/etcd:3.5.24-0",
+                  "harbor-registry:8018/registry.k8s.io/etcd:3.5.15-0"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "100m",
+                  "250m"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "memory"
+                ],
+                "value": [
+                  "100Mi",
+                  "4Gi"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": 1,
+                      "memory": "8Gi"
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "startupProbe",
+                  "failureThreshold"
+                ],
+                "value": [
+                  3,
+                  24
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "volumeMounts",
+                  0,
+                  "mountPath"
+                ],
+                "value": [
+                  "/u01/etcd/",
+                  "/etcd/data/"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "volumes",
+                  1,
+                  "hostPath",
+                  "path"
+                ],
+                "value": [
+                  "/u01/etcd/",
+                  "/etcd/data/"
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-apiserver.yaml",
+            "value": [
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    34,
+                    "--profiling=false"
+                  ],
+                  [
+                    35,
+                    "--kubelet-certificate-authority=/etc/kubernetes/pki/ca.crt"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "250m",
+                  1
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "4Gi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": 2,
+                      "memory": "8Gi"
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "startupProbe",
+                  "failureThreshold"
+                ],
+                "value": [
+                  3,
+                  24
+                ]
+              },
+              {
+                "type": "remove",
+                "key": [
+                  "spec",
+                  "containers",
+                  0
+                ],
+                "value": [
+                  [
+                    "env",
+                    [
+                      {
+                        "name": "no_proxy",
+                        "value": "127.0.0.1, localhost, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
+                      }
+                    ]
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-controller-manager.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command",
+                  6
+                ],
+                "value": [
+                  "--cluster-cidr=172.16.0.0/16",
+                  "--cluster-cidr=192.168.0.0/16"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    20,
+                    "--profiling=false"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests",
+                  "cpu"
+                ],
+                "value": [
+                  "200m",
+                  "250m"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "500Mi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": "500m",
+                      "memory": "1Gi"
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "startupProbe",
+                  "failureThreshold"
+                ],
+                "value": [
+                  3,
+                  24
+                ]
+              },
+              {
+                "type": "remove",
+                "key": [
+                  "spec",
+                  "containers",
+                  0
+                ],
+                "value": [
+                  [
+                    "env",
+                    [
+                      {
+                        "name": "no_proxy",
+                        "value": "127.0.0.1, localhost, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
+                      }
+                    ]
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "kube-scheduler.yaml",
+            "value": [
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "command"
+                ],
+                "value": [
+                  [
+                    6,
+                    "--profiling=false"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources",
+                  "requests"
+                ],
+                "value": [
+                  [
+                    "memory",
+                    "250Mi"
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "resources"
+                ],
+                "value": [
+                  [
+                    "limits",
+                    {
+                      "cpu": "200m",
+                      "memory": "500Mi"
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "spec",
+                  "containers",
+                  0,
+                  "startupProbe",
+                  "failureThreshold"
+                ],
+                "value": [
+                  3,
+                  24
+                ]
+              },
+              {
+                "type": "remove",
+                "key": [
+                  "spec",
+                  "containers",
+                  0
+                ],
+                "value": [
+                  [
+                    "env",
+                    [
+                      {
+                        "name": "no_proxy",
+                        "value": "127.0.0.1, localhost, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
+                      }
+                    ]
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "sysctl.conf",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "fs.file-max"
+                ],
+                "value": [
+                  "39435866",
+                  "50000000"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.ipv4.tcp_keepalive_time"
+                ],
+                "value": [
+                  "7200",
+                  "300"
+                ]
+              },
+              {
+                "type": "add",
+                "key": "",
+                "value": [
+                  [
+                    "fs.inotify.max_user_watches",
+                    "524288"
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "WORKER": {
+    "list_files": [
+      "/etc/systemd/system/containerd.service",
+      "/etc/containerd/config.toml",
+      "/var/lib/kubelet/config.yaml",
+      "/etc/crictl.yaml",
+      "/etc/systemd/system/kubelet.service.d/10-kubeadm.conf",
+      "/etc/sysctl.conf"
+    ],
+    "list_servers": [
+      {
+        "hostname": "BCHNICOM04",
+        "result": [
+          {
+            "filename": "config.toml",
+            "value": [
+              {
+                "type": "remove",
+                "key": "imports",
+                "value": [
+                  [
+                    0,
+                    "/etc/containerd/config.toml"
+                  ]
+                ]
+              },
+              {
+                "type": "change",
+                "key": "root",
+                "value": [
+                  "/u01/containerd",
+                  "/containerd"
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri"
+                ],
+                "value": [
+                  [
+                    "x509_key_pair_streaming",
+                    {
+                      "tls_cert_file": "",
+                      "tls_key_file": ""
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": [
+                  "plugins",
+                  "io.containerd.grpc.v1.cri"
+                ],
+                "value": [
+                  [
+                    "ignore_deprecation_warnings",
+                    []
+                  ],
+                  [
+                    "image_pull_with_sync_fs",
+                    false
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": [
+                  "plugins",
+                  "io.containerd.tracing.processor.v1.otlp"
+                ],
+                "value": [
+                  [
+                    "endpoint",
+                    ""
+                  ],
+                  [
+                    "insecure",
+                    0
+                  ],
+                  [
+                    "protocol",
+                    ""
+                  ]
+                ]
+              },
+              {
+                "type": "add",
+                "key": "plugins",
+                "value": [
+                  [
+                    "io.containerd.snapshotter.v1.btrfs",
+                    {
+                      "root_path": ""
+                    }
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": "",
+                "value": [
+                  [
+                    "plugin",
+                    {
+                      "io.containerd.grpc.v1.cri": {
+                        "registry": {
+                          "mirrors": {
+                            "harbor-registry:8018": {
+                              "endpoint": [
+                                "https://harbor-registry:8018"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "config.yaml",
+            "value": [
+              {
+                "type": "change",
+                "key": "cpuManagerReconcilePeriod",
+                "value": [
+                  "0s",
+                  "5s"
+                ]
+              },
+              {
+                "type": "change",
+                "key": "healthzBindAddress",
+                "value": [
+                  "127.0.0.1",
+                  "0.0.0.0"
+                ]
+              },
+              {
+                "type": "add",
+                "key": "",
+                "value": [
+                  [
+                    "imageGCHighThresholdPercent",
+                    85
+                  ],
+                  [
+                    "imageGCLowThresholdPercent",
+                    80
+                  ],
+                  [
+                    "resolvConf",
+                    ""
+                  ],
+                  [
+                    "cpuManagerPolicy",
+                    "static"
+                  ],
+                  [
+                    "kubeReserved",
+                    {
+                      "cpu": "8",
+                      "memory": "12Gi"
+                    }
+                  ],
+                  [
+                    "reservedSystemCPUs",
+                    "0-11"
+                  ],
+                  [
+                    "systemReserved",
+                    {
+                      "cpu": "4",
+                      "memory": "8Gi"
+                    }
+                  ],
+                  [
+                    "evictionHard",
+                    {
+                      "memory": {
+                        "available": "1Gi"
+                      },
+                      "nodefs": {
+                        "available": "5%",
+                        "inodesFree": "5%"
+                      },
+                      "imagefs": {
+                        "available": "10%"
+                      }
+                    }
+                  ],
+                  [
+                    "serverTLSBootstrap",
+                    true
+                  ]
+                ]
+              }
+            ]
+          },
+          {
+            "filename": "sysctl.conf",
+            "value": [
+              {
+                "type": "change",
+                "key": [
+                  "fs.file-max"
+                ],
+                "value": [
+                  "39436032",
+                  "50000000"
+                ]
+              },
+              {
+                "type": "change",
+                "key": [
+                  "net.ipv4.tcp_keepalive_time"
+                ],
+                "value": [
+                  "7200",
+                  "300"
+                ]
+              },
+              {
+                "type": "add",
+                "key": "",
+                "value": [
+                  [
+                    "fs.inotify.max_user_instances",
+                    "524288"
+                  ],
+                  [
+                    "fs.inotify.max_user_watches",
+                    "524288"
+                  ]
+                ]
+              },
+              {
+                "type": "remove",
+                "key": "",
+                "value": [
+                  [
+                    "vm.nr_hugepages",
+                    "2048"
+                  ]
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+server.name: kibana
+server.host: "0.0.0.0"
+server.port: {{ kibana_port }}
+server.basePath: "{{ kibana_base_path }}"
+server.rewriteBasePath: true
+
+path.data: {{ kibana_data_dir }}
+logging:
+  appenders:
+    file:
+      type: file
+      fileName: {{ kibana_log_dir }}/kibana.log
+      layout:
+        type: pattern
+  root:
+    appenders:
+      - default
+      - file
+
+elasticsearch.hosts:
+{% for host in groups.elasticsearch %}
+  - "https://{{ hostvars[host].elk_ip }}:{{ elastic_http_port }}"
+{% endfor %}
+elasticsearch.username: "{{ elastic_kibana_auth.username }}"
+elasticsearch.password: "{{ elastic_kibana_auth.password }}"
+elasticsearch.ssl.certificateAuthorities:
+  - "{{ kibana_config_dir }}/certs/ca/ca.crt"
+elasticsearch.ssl.verificationMode: certificate
+elasticsearch.requestTimeout: 120000
+elasticsearch.pingTimeout: 30000
+
+xpack.security.session.idleTimeout: "1h"
+xpack.security.session.lifespan: "8h"
+xpack.security.encryptionKey: "{{ kibana_security_encryption_key }}"
+xpack.encryptedSavedObjects.encryptionKey: "{{ kibana_saved_objects_encryption_key }}"
+xpack.reporting.encryptionKey: "{{ kibana_reporting_encryption_key }}"
+i18n.locale: "en"
+monitoring.ui.ccs.enabled: false

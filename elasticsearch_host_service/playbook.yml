@@ -1,0 +1,14 @@
+---
+- name: Install Elasticsearch host service cluster
+  hosts: elasticsearch
+  become: true
+  gather_facts: true
+  roles:
+    - elasticsearch_host_service
+
+- name: Install Kibana host service
+  hosts: kibana
+  become: true
+  gather_facts: true
+  roles:
+    - kibana_host_service

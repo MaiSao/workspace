@@ -1,0 +1,261 @@
+---
+- name: Validate exactly three Elasticsearch hosts
+  assert:
+    that:
+      - groups.elasticsearch | length == 3
+    fail_msg: "This installer supports exactly 3 Elasticsearch hosts."
+
+- name: Validate Elasticsearch roles are master and data only
+  assert:
+    that:
+      - elastic_node_roles | sort == ['data', 'master']
+    fail_msg: "Elasticsearch node roles must be exactly master,data."
+
+- name: Install required OS packages
+  package:
+    name:
+      - curl
+      - tar
+      - gzip
+      - unzip
+    state: present
+
+- name: Create Elasticsearch group
+  group:
+    name: "{{ elastic_group }}"
+    system: true
+
+- name: Create Elasticsearch user
+  user:
+    name: "{{ elastic_user }}"
+    group: "{{ elastic_group }}"
+    system: true
+    shell: /sbin/nologin
+    home: "{{ elastic_install_root }}"
+    create_home: false
+
+- name: Create Elasticsearch directories
+  file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(elastic_user) }}"
+    group: "{{ item.group | default(elastic_group) }}"
+    mode: "{{ item.mode | default('0750') }}"
+  loop:
+    - { path: "{{ elastic_install_root }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ elastic_artifact_cache }}", owner: root, group: root, mode: "0755" }
+    - { path: "{{ elastic_config_dir }}" }
+    - { path: "{{ elastic_config_dir }}/certs" }
+    - { path: "{{ elastic_config_dir }}/jvm.options.d" }
+    - { path: "{{ elastic_data_dir }}" }
+    - { path: "{{ elastic_log_dir }}" }
+    - { path: "{{ elastic_pid_dir }}" }
+
+- name: Render Elasticsearch kernel settings
+  copy:
+    dest: /etc/sysctl.d/99-elasticsearch.conf
+    mode: "0644"
+    content: |
+      vm.max_map_count = 262144
+      fs.file-max = 50000000
+  register: __elastic_sysctl_conf
+
+- name: Apply Elasticsearch kernel settings
+  command:
+    argv:
+      - sysctl
+      - --system
+  when: __elastic_sysctl_conf.changed
+
+- name: Download Elasticsearch archive
+  get_url:
+    url: "{{ elasticsearch_archive_url }}"
+    dest: "{{ elastic_artifact_cache }}/elasticsearch-{{ elastic_version }}-{{ elastic_arch }}.tar.gz"
+    mode: "0644"
+
+- name: Extract Elasticsearch archive
+  unarchive:
+    src: "{{ elastic_artifact_cache }}/elasticsearch-{{ elastic_version }}-{{ elastic_arch }}.tar.gz"
+    dest: "{{ elastic_install_root }}"
+    remote_src: true
+    creates: "{{ elastic_install_root }}/elasticsearch-{{ elastic_version }}"
+    owner: root
+    group: root
+
+- name: Set Elasticsearch install symlink
+  file:
+    src: "{{ elastic_install_root }}/elasticsearch-{{ elastic_version }}"
+    dest: "{{ elastic_install_root }}/elasticsearch"
+    state: link
+
+- name: Copy default Elasticsearch config files
+  shell: |
+    set -Eeuo pipefail
+    cp -n {{ elastic_install_root }}/elasticsearch/config/jvm.options {{ elastic_config_dir }}/jvm.options
+    cp -n {{ elastic_install_root }}/elasticsearch/config/role_mapping.yml {{ elastic_config_dir }}/role_mapping.yml
+    cp -n {{ elastic_install_root }}/elasticsearch/config/roles.yml {{ elastic_config_dir }}/roles.yml
+    cp -n {{ elastic_install_root }}/elasticsearch/config/users {{ elastic_config_dir }}/users
+    cp -n {{ elastic_install_root }}/elasticsearch/config/users_roles {{ elastic_config_dir }}/users_roles
+    chown -R {{ elastic_user }}:{{ elastic_group }} {{ elastic_config_dir }}
+  args:
+    executable: /bin/bash
+    creates: "{{ elastic_config_dir }}/jvm.options"
+
+- name: Create certificate work directory on first Elasticsearch host
+  file:
+    path: "{{ elastic_cert_work_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: "{{ groups.elasticsearch[0] }}"
+  run_once: true
+
+- name: Render certificate instance list on first Elasticsearch host
+  template:
+    src: instances.yml.j2
+    dest: "{{ elastic_cert_work_dir }}/instances.yml"
+    mode: "0600"
+  delegate_to: "{{ groups.elasticsearch[0] }}"
+  run_once: true
+
+- name: Generate Elasticsearch CA and node certificates
+  shell: |
+    set -Eeuo pipefail
+    cd {{ elastic_cert_work_dir }}
+    if [ ! -f certs/ca/ca.crt ]; then
+      rm -rf ca.zip certs.zip certs
+      {{ elastic_install_root }}/elasticsearch/bin/elasticsearch-certutil ca --silent --pem --out ca.zip
+      unzip -q ca.zip -d certs
+      {{ elastic_install_root }}/elasticsearch/bin/elasticsearch-certutil cert --silent --pem \
+        --ca-cert certs/ca/ca.crt \
+        --ca-key certs/ca/ca.key \
+        --in instances.yml \
+        --out certs.zip
+      unzip -q certs.zip -d certs
+    fi
+    tar -C {{ elastic_cert_work_dir }}/certs -czf {{ elastic_cert_bundle_remote }} .
+  args:
+    executable: /bin/bash
+  delegate_to: "{{ groups.elasticsearch[0] }}"
+  run_once: true
+  changed_when: false
+
+- name: Fetch Elasticsearch certificate bundle
+  fetch:
+    src: "{{ elastic_cert_bundle_remote }}"
+    dest: "{{ elastic_cert_bundle_local }}"
+    flat: true
+  delegate_to: "{{ groups.elasticsearch[0] }}"
+  run_once: true
+
+- name: Copy Elasticsearch certificate bundle
+  copy:
+    src: "{{ elastic_cert_bundle_local }}"
+    dest: "{{ elastic_cert_bundle_remote }}"
+    mode: "0600"
+
+- name: Install Elasticsearch certificates
+  unarchive:
+    src: "{{ elastic_cert_bundle_remote }}"
+    dest: "{{ elastic_config_dir }}/certs"
+    remote_src: true
+    owner: "{{ elastic_user }}"
+    group: "{{ elastic_group }}"
+    mode: "0640"
+
+- name: Render Elasticsearch configuration
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ elastic_user }}"
+    group: "{{ elastic_group }}"
+    mode: "{{ item.mode | default('0640') }}"
+  loop:
+    - { src: elasticsearch.yml.j2, dest: "{{ elastic_config_dir }}/elasticsearch.yml" }
+    - { src: heap.options.j2, dest: "{{ elastic_config_dir }}/jvm.options.d/heap.options" }
+    - { src: log4j2.properties.j2, dest: "{{ elastic_config_dir }}/log4j2.properties" }
+  notify: Restart Elasticsearch
+
+- name: Create Elasticsearch keystore
+  command:
+    argv:
+      - "{{ elastic_install_root }}/elasticsearch/bin/elasticsearch-keystore"
+      - create
+  args:
+    creates: "{{ elastic_config_dir }}/elasticsearch.keystore"
+  environment:
+    ES_PATH_CONF: "{{ elastic_config_dir }}"
+  become_user: "{{ elastic_user }}"
+
+- name: Set Elasticsearch bootstrap password
+  shell: |
+    set -Eeuo pipefail
+    printf '%s\n' '{{ elastic_basic_auth.password }}' | {{ elastic_install_root }}/elasticsearch/bin/elasticsearch-keystore add -x -f bootstrap.password
+    touch {{ elastic_config_dir }}/.bootstrap_password_set
+  args:
+    executable: /bin/bash
+    creates: "{{ elastic_config_dir }}/.bootstrap_password_set"
+  environment:
+    ES_PATH_CONF: "{{ elastic_config_dir }}"
+  become_user: "{{ elastic_user }}"
+
+- name: Render Elasticsearch systemd unit
+  template:
+    src: elasticsearch.service.j2
+    dest: /etc/systemd/system/elasticsearch.service
+    mode: "0644"
+  notify: Restart Elasticsearch
+
+- name: Apply pending Elasticsearch handlers before start
+  meta: flush_handlers
+
+- name: Enable and start Elasticsearch
+  systemd:
+    name: elasticsearch
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait for Elasticsearch HTTPS endpoint
+  uri:
+    url: "https://{{ hostvars[groups.elasticsearch[0]].elk_ip }}:{{ elastic_http_port }}"
+    method: GET
+    user: "{{ elastic_basic_auth.username }}"
+    password: "{{ elastic_basic_auth.password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: 200
+  register: __elastic_wait
+  retries: 60
+  delay: 5
+  until: __elastic_wait.status == 200
+  run_once: true
+
+- name: Wait for all three Elasticsearch nodes
+  uri:
+    url: "https://{{ hostvars[groups.elasticsearch[0]].elk_ip }}:{{ elastic_http_port }}/_cluster/health?wait_for_nodes=3&timeout=300s"
+    method: GET
+    user: "{{ elastic_basic_auth.username }}"
+    password: "{{ elastic_basic_auth.password }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: 200
+  register: __elastic_cluster_wait
+  retries: 10
+  delay: 10
+  until: __elastic_cluster_wait.status == 200
+  run_once: true
+
+- name: Set kibana_system password
+  uri:
+    url: "https://{{ hostvars[groups.elasticsearch[0]].elk_ip }}:{{ elastic_http_port }}/_security/user/{{ elastic_kibana_auth.username }}/_password"
+    method: POST
+    user: "{{ elastic_basic_auth.username }}"
+    password: "{{ elastic_basic_auth.password }}"
+    force_basic_auth: true
+    validate_certs: false
+    body_format: json
+    body:
+      password: "{{ elastic_kibana_auth.password }}"
+    status_code:
+      - 200
+  run_once: true

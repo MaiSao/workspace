@@ -1,0 +1,364 @@
+---
+#===============================================================================
+# CHECKLIST INPUTS
+# This file is self-contained. After installing a cluster, push or edit the
+# enabled service list and health-check scope here, then run
+# k8s_checklist/playbook.yml.
+# It intentionally does not import variables from k8s_auto.
+#===============================================================================
+
+checklist_services:
+  common: true
+  containerd: true
+  haproxy: true
+  keepalived: true
+  kubeadm: true
+  calico: true
+  multus: true
+  whereabouts: true
+  coredns: true
+  metrics_server: true
+  kube_state_metrics: true
+  kubelet_csr_approver: true
+  kyverno: true
+  etcd_jobs: true
+  cert_exporter: true
+  snmp_exporter: true
+  snmp_switch_exporter: true
+  haproxy_exporter: true
+  keepalived_exporter: true
+  ip_pools_exporter: false
+  k8s_tuning: true
+
+checklist_extra_services:
+  fluentbit: true
+  local_path_provisioner: true
+  elasticsearch: false
+
+k8s_install_services: >-
+  {{
+    checklist_services
+    | dict2items
+    | selectattr('value', 'equalto', true)
+    | map(attribute='key')
+    | list
+  }}
+
+k8s_install_extra_services: >-
+  {{
+    checklist_extra_services
+    | dict2items
+    | selectattr('value', 'equalto', true)
+    | map(attribute='key')
+    | list
+  }}
+
+k8s_master_hosts: "{{ groups.get('k8s-master', []) }}"
+k8s_worker_hosts: "{{ groups.get('k8s-worker', []) }}"
+k8s_cluster_hosts: "{{ (k8s_master_hosts + k8s_worker_hosts) | unique | list }}"
+k8s_bootstrap_master: "{{ k8s_master_hosts | first }}"
+
+setup_ha: true
+k8s_master_ip: 172.20.3.155
+ha_apiserver_port: 8443
+localAPIEndpointPort: 6443
+checklist_nodeport_probe_host: "{{ hostvars[k8s_bootstrap_master].k8s_ip | default(hostvars[k8s_bootstrap_master].ansible_host) }}"
+
+multi_network: true
+multus_sriov: false
+
+kubelet_serverTLSBootstrap: true
+
+local_path_namespace: local-path-storage
+local_path_storage_class_name: local-path
+
+fluentbit_namespace: fluentbit
+fluentbit_name: fluent-bit-ocs
+fluentbit_config_name: fluent-bit-ocs-config
+fluentbit_service_name: fluent-bit-service
+fluentbit_elasticsearch_host: elasticsearch-master.elk.svc
+fluentbit_elasticsearch_port: "9200"
+
+elasticsearch_namespace: elk
+elasticsearch_storage_classes:
+  data:
+    name: elasticsearch-data
+  log:
+    name: elasticsearch-log
+elasticsearch_client_service:
+  http_node_port: 8200
+  transport_node_port: 43000
+elasticsearch_kibana:
+  enabled: true
+  node_port: 8601
+elasticsearch_exporter:
+  enabled: true
+  node_port: 9114
+elasticsearch_node_sets:
+  master:
+    replicas: 3
+  data:
+    replicas: 3
+  client:
+    replicas: 3
+
+#===============================================================================
+# CHECKLIST RULES
+# These assertions use the expected values above.
+#===============================================================================
+
+checklist_rollout_timeout: 180s
+
+#===============================================================================
+# HEALTH CHECK RULES
+# These assertions only answer whether enabled services are alive/available.
+#===============================================================================
+
+checklist_systemd_units:
+  - name: containerd
+    unit: containerd
+    enabled: "{{ 'containerd' in k8s_install_services }}"
+    scope: all
+  - name: kubelet
+    unit: kubelet
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    scope: all
+  - name: haproxy
+    unit: haproxy
+    enabled: "{{ ('haproxy' in k8s_install_services) and (setup_ha | bool) }}"
+    scope: master
+  - name: keepalived
+    unit: keepalived
+    enabled: "{{ ('keepalived' in k8s_install_services) and (setup_ha | bool) }}"
+    scope: master
+  - name: snmpd
+    unit: snmpd
+    enabled: "{{ 'snmp_exporter' in k8s_install_services }}"
+    scope: all
+
+checklist_core_pod_selectors:
+  - name: kube-apiserver static pods
+    namespace: kube-system
+    selector: component=kube-apiserver
+    expected_count: "{{ k8s_master_hosts | length }}"
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+  - name: kube-controller-manager static pods
+    namespace: kube-system
+    selector: component=kube-controller-manager
+    expected_count: "{{ k8s_master_hosts | length }}"
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+  - name: kube-scheduler static pods
+    namespace: kube-system
+    selector: component=kube-scheduler
+    expected_count: "{{ k8s_master_hosts | length }}"
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+  - name: etcd static pods
+    namespace: kube-system
+    selector: component=etcd
+    expected_count: "{{ k8s_master_hosts | length }}"
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+
+checklist_host_health_commands:
+  - name: containerd responds to ctr
+    scope: all
+    enabled: "{{ 'containerd' in k8s_install_services }}"
+    cmd: "ctr version >/dev/null"
+  - name: CRI responds through crictl
+    scope: all
+    enabled: "{{ 'containerd' in k8s_install_services }}"
+    cmd: "crictl info >/dev/null"
+  - name: kubelet local healthz
+    scope: all
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    cmd: "curl -kfsS --max-time 5 https://127.0.0.1:10250/healthz | grep -Fx ok"
+  - name: kube-apiserver local readyz
+    scope: master
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    cmd: "curl -kfsS --max-time 5 https://127.0.0.1:6443/readyz | grep -Fx ok"
+  - name: kube-controller-manager local healthz
+    scope: master
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    cmd: "curl -kfsS --max-time 5 https://127.0.0.1:10257/healthz | grep -Fx ok"
+  - name: kube-scheduler local healthz
+    scope: master
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    cmd: "curl -kfsS --max-time 5 https://127.0.0.1:10259/healthz | grep -Fx ok"
+  - name: etcd local health endpoint
+    scope: master
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    cmd: "curl -fsS --max-time 5 http://127.0.0.1:2381/health | grep -F 'true'"
+  - name: HAProxy local API frontend
+    scope: master
+    enabled: "{{ ('haproxy' in k8s_install_services) and (setup_ha | bool) }}"
+    cmd: "timeout 5 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/{{ ha_apiserver_port }}'"
+  - name: HAProxy stats socket exists
+    scope: master
+    enabled: "{{ ('haproxy' in k8s_install_services) and (setup_ha | bool) }}"
+    cmd: "test -S /var/lib/haproxy/stats"
+
+checklist_cluster_health_commands:
+  - name: kube-apiserver cluster readyz
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    cmd: "kubectl get --raw=/readyz >/dev/null"
+  - name: kube-apiserver cluster livez
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    cmd: "kubectl get --raw=/livez >/dev/null"
+  - name: metrics-server returns node metrics
+    enabled: "{{ 'metrics_server' in k8s_install_services }}"
+    cmd: "kubectl top nodes --no-headers >/dev/null"
+  - name: Kubernetes nodes have no NetworkUnavailable condition
+    enabled: "{{ 'kubeadm' in k8s_install_services }}"
+    cmd: >-
+      test -z "$(
+        kubectl get nodes
+        -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.conditions[?(@.type=="NetworkUnavailable")]}{.status}{end}{"\n"}{end}' |
+        awk '$2 == "True" { print $1 }'
+      )"
+
+checklist_apiservices:
+  - name: metrics-server APIService
+    object_name: v1beta1.metrics.k8s.io
+    enabled: "{{ 'metrics_server' in k8s_install_services }}"
+
+checklist_kubernetes_objects:
+  - { name: kubeadm configmap, resource: configmap, object_name: kubeadm-config, namespace: kube-system, enabled: "{{ 'kubeadm' in k8s_install_services }}" }
+  - { name: calico configmap, resource: configmap, object_name: calico-config, namespace: kube-system, enabled: "{{ 'calico' in k8s_install_services }}" }
+  - { name: calico IPPool CRD, resource: crd, object_name: ippools.crd.projectcalico.org, namespace: "", enabled: "{{ 'calico' in k8s_install_services }}" }
+  - { name: multus NAD CRD, resource: crd, object_name: network-attachment-definitions.k8s.cni.cncf.io, namespace: "", enabled: "{{ ('multus' in k8s_install_services) and (multi_network | bool) }}" }
+  - { name: multus configmap, resource: configmap, object_name: multus-cni-config, namespace: kube-system, enabled: "{{ ('multus' in k8s_install_services) and (multi_network | bool) }}" }
+  - { name: whereabouts IPPool CRD, resource: crd, object_name: ippools.whereabouts.cni.cncf.io, namespace: "", enabled: "{{ ('whereabouts' in k8s_install_services) and (multi_network | bool) }}" }
+  - { name: whereabouts cleaner cronjob, resource: cronjob, object_name: ippool-cleaner, namespace: kube-system, enabled: "{{ ('whereabouts' in k8s_install_services) and (multi_network | bool) }}" }
+  - { name: SR-IOV device-plugin config, resource: configmap, object_name: sriovdp-config, namespace: kube-system, enabled: "{{ (multi_network | bool) and (multus_sriov | bool) }}" }
+  - { name: CoreDNS configmap, resource: configmap, object_name: coredns, namespace: kube-system, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: CoreDNS NodePort service, resource: service, object_name: kube-dns-node-port, namespace: kube-system, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: CoreDNS metrics service, resource: service, object_name: coredns-metrics, namespace: kube-system, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: metrics-server APIService, resource: apiservice, object_name: v1beta1.metrics.k8s.io, namespace: "", enabled: "{{ 'metrics_server' in k8s_install_services }}" }
+  - { name: metrics-server service, resource: service, object_name: metrics-server, namespace: kube-system, enabled: "{{ 'metrics_server' in k8s_install_services }}" }
+  - { name: kube-state-metrics service, resource: service, object_name: kube-state-metrics, namespace: kube-system, enabled: "{{ 'kube_state_metrics' in k8s_install_services }}" }
+  - { name: kubelet CSR approver serviceaccount, resource: serviceaccount, object_name: kubelet-csr-approver, namespace: kube-system, enabled: "{{ ('kubelet_csr_approver' in k8s_install_services) and (kubelet_serverTLSBootstrap | bool) }}" }
+  - { name: Kyverno namespace, resource: namespace, object_name: kyverno, namespace: "", enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno admission service, resource: service, object_name: kyverno-svc, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno admission metrics service, resource: service, object_name: kyverno-svc-metrics, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno background metrics service, resource: service, object_name: kyverno-background-controller-metrics, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno cleanup service, resource: service, object_name: kyverno-cleanup-controller, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno cleanup metrics service, resource: service, object_name: kyverno-cleanup-controller-metrics, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno reports metrics service, resource: service, object_name: kyverno-reports-controller-metrics, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno require resources policy, resource: clusterpolicy, object_name: require-pod-resources, namespace: "", enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno run-as-nonroot policy, resource: clusterpolicy, object_name: enforce-run-as-nonroot, namespace: "", enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno blocked nodeports policy, resource: clusterpolicy, object_name: block-specific-nodeports, namespace: "", enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: etcd defrag cronjob, resource: cronjob, object_name: etcd-defrag, namespace: kube-system, enabled: "{{ 'etcd_jobs' in k8s_install_services }}" }
+  - { name: etcd backup rotate cronjob, resource: cronjob, object_name: etcd-backup-rotate, namespace: kube-system, enabled: "{{ 'etcd_jobs' in k8s_install_services }}" }
+  - { name: cert exporter service, resource: service, object_name: cert-exporter, namespace: kube-system, enabled: "{{ 'cert_exporter' in k8s_install_services }}" }
+  - { name: SNMP switch exporter service, resource: service, object_name: snmp-switch-exporter-nodeport-svc, namespace: kube-system, enabled: "{{ 'snmp_switch_exporter' in k8s_install_services }}" }
+  - { name: IP pools exporter service, resource: service, object_name: ip-pool-exporter, namespace: kube-system, enabled: "{{ ('ip_pools_exporter' in k8s_install_services) and (multus_sriov | bool) }}" }
+  - { name: Local Path Provisioner namespace, resource: namespace, object_name: "{{ local_path_namespace }}", namespace: "", enabled: "{{ 'local_path_provisioner' in k8s_install_extra_services }}" }
+  - { name: Local Path Provisioner storage class, resource: storageclass, object_name: "{{ local_path_storage_class_name }}", namespace: "", enabled: "{{ 'local_path_provisioner' in k8s_install_extra_services }}" }
+  - { name: Local Path Provisioner config, resource: configmap, object_name: local-path-config, namespace: "{{ local_path_namespace }}", enabled: "{{ 'local_path_provisioner' in k8s_install_extra_services }}" }
+  - { name: Fluent Bit namespace, resource: namespace, object_name: "{{ fluentbit_namespace }}", namespace: "", enabled: "{{ 'fluentbit' in k8s_install_extra_services }}" }
+  - { name: Fluent Bit config, resource: configmap, object_name: "{{ fluentbit_config_name }}", namespace: "{{ fluentbit_namespace }}", enabled: "{{ 'fluentbit' in k8s_install_extra_services }}" }
+  - { name: Fluent Bit service, resource: service, object_name: "{{ fluentbit_service_name }}", namespace: "{{ fluentbit_namespace }}", enabled: "{{ 'fluentbit' in k8s_install_extra_services }}" }
+  - { name: Elasticsearch namespace, resource: namespace, object_name: "{{ elasticsearch_namespace }}", namespace: "", enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+  - { name: Elasticsearch client service, resource: service, object_name: elasticsearch-client, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+  - { name: Elasticsearch master service, resource: service, object_name: elasticsearch-master, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+  - { name: Elasticsearch data storage class, resource: storageclass, object_name: "{{ elasticsearch_storage_classes.data.name }}", namespace: "", enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+  - { name: Elasticsearch log storage class, resource: storageclass, object_name: "{{ elasticsearch_storage_classes.log.name }}", namespace: "", enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+  - { name: Kibana service, resource: service, object_name: kibana, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_kibana.enabled | bool) }}" }
+  - { name: Elasticsearch exporter service, resource: service, object_name: elasticsearch-exporter, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_exporter.enabled | bool) }}" }
+
+checklist_service_endpoints:
+  - { name: CoreDNS DNS service, namespace: kube-system, service: kube-dns, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: CoreDNS NodePort service, namespace: kube-system, service: kube-dns-node-port, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: CoreDNS metrics service, namespace: kube-system, service: coredns-metrics, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: metrics-server service, namespace: kube-system, service: metrics-server, enabled: "{{ 'metrics_server' in k8s_install_services }}" }
+  - { name: kube-state-metrics service, namespace: kube-system, service: kube-state-metrics, enabled: "{{ 'kube_state_metrics' in k8s_install_services }}" }
+  - { name: cert exporter service, namespace: kube-system, service: cert-exporter, enabled: "{{ 'cert_exporter' in k8s_install_services }}" }
+  - { name: SNMP switch exporter service, namespace: kube-system, service: snmp-switch-exporter-nodeport-svc, enabled: "{{ 'snmp_switch_exporter' in k8s_install_services }}" }
+  - { name: Kyverno admission service, namespace: kyverno, service: kyverno-svc, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno admission metrics service, namespace: kyverno, service: kyverno-svc-metrics, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno background metrics service, namespace: kyverno, service: kyverno-background-controller-metrics, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno cleanup service, namespace: kyverno, service: kyverno-cleanup-controller, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno cleanup metrics service, namespace: kyverno, service: kyverno-cleanup-controller-metrics, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno reports metrics service, namespace: kyverno, service: kyverno-reports-controller-metrics, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: IP pools exporter service, namespace: kube-system, service: ip-pool-exporter, enabled: "{{ ('ip_pools_exporter' in k8s_install_services) and (multus_sriov | bool) }}" }
+  - { name: Fluent Bit service, namespace: "{{ fluentbit_namespace }}", service: "{{ fluentbit_service_name }}", enabled: "{{ 'fluentbit' in k8s_install_extra_services }}" }
+  - { name: Elasticsearch client service, namespace: "{{ elasticsearch_namespace }}", service: elasticsearch-client, enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+  - { name: Elasticsearch master service, namespace: "{{ elasticsearch_namespace }}", service: elasticsearch-master, enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+  - { name: Kibana service, namespace: "{{ elasticsearch_namespace }}", service: kibana, enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_kibana.enabled | bool) }}" }
+  - { name: Elasticsearch exporter service, namespace: "{{ elasticsearch_namespace }}", service: elasticsearch-exporter, enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_exporter.enabled | bool) }}" }
+
+checklist_kubernetes_service_http_checks:
+  - { name: CoreDNS metrics, namespace: kube-system, service: coredns-metrics, port: 9153, path: /metrics, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: kube-state-metrics metrics, namespace: kube-system, service: kube-state-metrics, port: 8080, path: /metrics, enabled: "{{ 'kube_state_metrics' in k8s_install_services }}" }
+  - { name: kube-state-metrics telemetry, namespace: kube-system, service: kube-state-metrics, port: 8081, path: /metrics, enabled: "{{ 'kube_state_metrics' in k8s_install_services }}" }
+  - { name: cert exporter metrics, namespace: kube-system, service: cert-exporter, port: 8080, path: /metrics, enabled: "{{ 'cert_exporter' in k8s_install_services }}" }
+  - { name: SNMP switch exporter metrics, namespace: kube-system, service: snmp-switch-exporter-nodeport-svc, port: 9216, path: /metrics, enabled: "{{ 'snmp_switch_exporter' in k8s_install_services }}" }
+  - { name: Kyverno admission metrics, namespace: kyverno, service: kyverno-svc-metrics, port: 8000, path: /metrics, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno background metrics, namespace: kyverno, service: kyverno-background-controller-metrics, port: 8000, path: /metrics, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno cleanup metrics, namespace: kyverno, service: kyverno-cleanup-controller-metrics, port: 8000, path: /metrics, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: Kyverno reports metrics, namespace: kyverno, service: kyverno-reports-controller-metrics, port: 8000, path: /metrics, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: IP pools exporter metrics, namespace: kube-system, service: ip-pool-exporter, port: 9998, path: /metrics, enabled: "{{ ('ip_pools_exporter' in k8s_install_services) and (multus_sriov | bool) }}" }
+  - { name: Fluent Bit health, namespace: "{{ fluentbit_namespace }}", service: "{{ fluentbit_service_name }}", port: 2020, path: /api/v1/health, enabled: "{{ 'fluentbit' in k8s_install_extra_services }}" }
+  - { name: Fluent Bit metrics, namespace: "{{ fluentbit_namespace }}", service: "{{ fluentbit_service_name }}", port: 2020, path: /api/v1/metrics/prometheus, enabled: "{{ 'fluentbit' in k8s_install_extra_services }}" }
+  - { name: Elasticsearch exporter metrics, namespace: "{{ elasticsearch_namespace }}", service: elasticsearch-exporter, port: 9114, path: /metrics, enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_exporter.enabled | bool) }}" }
+
+checklist_kubernetes_rollouts:
+  - { name: calico-node, resource: daemonset, object_name: calico-node, namespace: kube-system, enabled: "{{ 'calico' in k8s_install_services }}" }
+  - { name: calico-kube-controllers, resource: deployment, object_name: calico-kube-controllers, namespace: kube-system, enabled: "{{ 'calico' in k8s_install_services }}" }
+  - { name: kube-proxy, resource: daemonset, object_name: kube-proxy, namespace: kube-system, enabled: "{{ 'kubeadm' in k8s_install_services }}" }
+  - { name: kube-multus-ds, resource: daemonset, object_name: kube-multus-ds, namespace: kube-system, enabled: "{{ ('multus' in k8s_install_services) and (multi_network | bool) }}" }
+  - { name: whereabouts, resource: daemonset, object_name: whereabouts, namespace: kube-system, enabled: "{{ ('whereabouts' in k8s_install_services) and (multi_network | bool) }}" }
+  - { name: kube-sriov-device-plugin, resource: daemonset, object_name: kube-sriov-device-plugin, namespace: kube-system, enabled: "{{ (multi_network | bool) and (multus_sriov | bool) }}" }
+  - { name: coredns, resource: deployment, object_name: coredns, namespace: kube-system, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: metrics-server, resource: deployment, object_name: metrics-server, namespace: kube-system, enabled: "{{ 'metrics_server' in k8s_install_services }}" }
+  - { name: kube-state-metrics, resource: deployment, object_name: kube-state-metrics, namespace: kube-system, enabled: "{{ 'kube_state_metrics' in k8s_install_services }}" }
+  - { name: kubelet-csr-approver, resource: deployment, object_name: kubelet-csr-approver, namespace: kube-system, enabled: "{{ ('kubelet_csr_approver' in k8s_install_services) and (kubelet_serverTLSBootstrap | bool) }}" }
+  - { name: kyverno-admission-controller, resource: deployment, object_name: kyverno-admission-controller, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: kyverno-background-controller, resource: deployment, object_name: kyverno-background-controller, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: kyverno-cleanup-controller, resource: deployment, object_name: kyverno-cleanup-controller, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: kyverno-reports-controller, resource: deployment, object_name: kyverno-reports-controller, namespace: kyverno, enabled: "{{ 'kyverno' in k8s_install_services }}" }
+  - { name: cert-exporter-nodes, resource: daemonset, object_name: cert-exporter-nodes, namespace: kube-system, enabled: "{{ 'cert_exporter' in k8s_install_services }}" }
+  - { name: snmp-exporter, resource: daemonset, object_name: snmp-exporter, namespace: kube-system, enabled: "{{ 'snmp_exporter' in k8s_install_services }}" }
+  - { name: snmp-switch-exporter, resource: daemonset, object_name: snmp-switch-exporter, namespace: kube-system, enabled: "{{ 'snmp_switch_exporter' in k8s_install_services }}" }
+  - { name: haproxy-exporter, resource: daemonset, object_name: haproxy-exporter, namespace: kube-system, enabled: "{{ ('haproxy_exporter' in k8s_install_services) and (setup_ha | bool) }}" }
+  - { name: keepalived-exporter, resource: daemonset, object_name: keepalived-exporter, namespace: kube-system, enabled: "{{ ('keepalived_exporter' in k8s_install_services) and (setup_ha | bool) }}" }
+  - { name: ip-pool-exporter, resource: deployment, object_name: ip-pool-exporter, namespace: kube-system, enabled: "{{ ('ip_pools_exporter' in k8s_install_services) and (multus_sriov | bool) }}" }
+  - { name: local-path-provisioner, resource: deployment, object_name: local-path-provisioner, namespace: "{{ local_path_namespace }}", enabled: "{{ 'local_path_provisioner' in k8s_install_extra_services }}" }
+  - { name: fluent-bit, resource: daemonset, object_name: "{{ fluentbit_name }}", namespace: "{{ fluentbit_namespace }}", enabled: "{{ 'fluentbit' in k8s_install_extra_services }}" }
+  - { name: kibana, resource: deployment, object_name: kibana, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_kibana.enabled | bool) }}" }
+  - { name: elasticsearch-exporter, resource: deployment, object_name: elasticsearch-exporter, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_exporter.enabled | bool) }}" }
+
+checklist_daemonset_availability:
+  - { name: calico-node, object_name: calico-node, namespace: kube-system, enabled: "{{ 'calico' in k8s_install_services }}" }
+  - { name: kube-proxy, object_name: kube-proxy, namespace: kube-system, enabled: "{{ 'kubeadm' in k8s_install_services }}" }
+  - { name: kube-multus-ds, object_name: kube-multus-ds, namespace: kube-system, enabled: "{{ ('multus' in k8s_install_services) and (multi_network | bool) }}" }
+  - { name: whereabouts, object_name: whereabouts, namespace: kube-system, enabled: "{{ ('whereabouts' in k8s_install_services) and (multi_network | bool) }}" }
+  - { name: kube-sriov-device-plugin, object_name: kube-sriov-device-plugin, namespace: kube-system, enabled: "{{ (multi_network | bool) and (multus_sriov | bool) }}" }
+  - { name: cert-exporter-nodes, object_name: cert-exporter-nodes, namespace: kube-system, enabled: "{{ 'cert_exporter' in k8s_install_services }}" }
+  - { name: snmp-exporter, object_name: snmp-exporter, namespace: kube-system, enabled: "{{ 'snmp_exporter' in k8s_install_services }}" }
+  - { name: snmp-switch-exporter, object_name: snmp-switch-exporter, namespace: kube-system, enabled: "{{ 'snmp_switch_exporter' in k8s_install_services }}" }
+  - { name: haproxy-exporter, object_name: haproxy-exporter, namespace: kube-system, enabled: "{{ ('haproxy_exporter' in k8s_install_services) and (setup_ha | bool) }}" }
+  - { name: keepalived-exporter, object_name: keepalived-exporter, namespace: kube-system, enabled: "{{ ('keepalived_exporter' in k8s_install_services) and (setup_ha | bool) }}" }
+  - { name: fluent-bit, object_name: "{{ fluentbit_name }}", namespace: "{{ fluentbit_namespace }}", enabled: "{{ 'fluentbit' in k8s_install_extra_services }}" }
+
+checklist_statefulset_availability:
+  - { name: elasticsearch-master, object_name: elasticsearch-master, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and ((elasticsearch_node_sets.master.replicas | int) > 0) }}" }
+  - { name: elasticsearch-data, object_name: elasticsearch-data, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and ((elasticsearch_node_sets.data.replicas | int) > 0) }}" }
+  - { name: elasticsearch-client, object_name: elasticsearch-client, namespace: "{{ elasticsearch_namespace }}", enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and ((elasticsearch_node_sets.client.replicas | int) > 0) }}" }
+
+checklist_node_http_checks:
+  - { name: SNMP exporter metrics, scope: all, port: 9116, path: /metrics, enabled: "{{ 'snmp_exporter' in k8s_install_services }}" }
+  - { name: SNMP switch exporter metrics, scope: master, port: 9216, path: /metrics, enabled: "{{ 'snmp_switch_exporter' in k8s_install_services }}" }
+  - { name: HAProxy exporter metrics, scope: master, port: 9101, path: /metrics, enabled: "{{ ('haproxy_exporter' in k8s_install_services) and (setup_ha | bool) }}" }
+  - { name: Keepalived exporter metrics, scope: master, port: 9165, path: /metrics, enabled: "{{ ('keepalived_exporter' in k8s_install_services) and (setup_ha | bool) }}" }
+
+checklist_tcp_checks:
+  - { name: HA Kubernetes API VIP, host: "{{ k8s_master_ip }}", port: "{{ ha_apiserver_port }}", enabled: "{{ setup_ha | bool }}" }
+  - { name: CoreDNS TCP NodePort, host: "{{ checklist_nodeport_probe_host }}", port: 8853, enabled: "{{ 'coredns' in k8s_install_services }}" }
+  - { name: Elasticsearch transport NodePort, host: "{{ checklist_nodeport_probe_host }}", port: "{{ elasticsearch_client_service.transport_node_port }}", enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+
+checklist_nodeport_http_checks:
+  - { name: kube-state-metrics HTTP, host: "{{ checklist_nodeport_probe_host }}", port: 7070, path: /metrics, enabled: "{{ 'kube_state_metrics' in k8s_install_services }}" }
+  - { name: kube-state-metrics telemetry, host: "{{ checklist_nodeport_probe_host }}", port: 7071, path: /metrics, enabled: "{{ 'kube_state_metrics' in k8s_install_services }}" }
+  - { name: Elasticsearch client HTTP, host: "{{ checklist_nodeport_probe_host }}", port: "{{ elasticsearch_client_service.http_node_port }}", path: /, enabled: "{{ 'elasticsearch' in k8s_install_extra_services }}" }
+  - { name: Kibana HTTP, host: "{{ checklist_nodeport_probe_host }}", port: "{{ elasticsearch_kibana.node_port }}", path: /login, enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_kibana.enabled | bool) }}" }
+  - { name: Elasticsearch exporter metrics, host: "{{ checklist_nodeport_probe_host }}", port: "{{ elasticsearch_exporter.node_port }}", path: /metrics, enabled: "{{ ('elasticsearch' in k8s_install_extra_services) and (elasticsearch_exporter.enabled | bool) }}" }

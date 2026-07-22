@@ -1,0 +1,19 @@
+---
+checklist_runtime_enabled: true
+
+checklist_rollout_timeout: 180s
+checklist_install_parameters: {}
+checklist_systemd_units: []
+checklist_core_pod_selectors: []
+checklist_kubernetes_objects: []
+checklist_kubernetes_rollouts: []
+checklist_apiservices: []
+checklist_service_endpoints: []
+checklist_kubernetes_service_http_checks: []
+checklist_daemonset_availability: []
+checklist_statefulset_availability: []
+checklist_host_health_commands: []
+checklist_cluster_health_commands: []
+checklist_node_http_checks: []
+checklist_tcp_checks: []
+checklist_nodeport_http_checks: []

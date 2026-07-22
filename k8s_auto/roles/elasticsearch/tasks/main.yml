@@ -24,7 +24,33 @@
 
 - name: Build Elasticsearch eligible node list
   set_fact:
-    __elasticsearch_target_hosts: "{{ elasticsearch_target_hosts }}"
+    __elasticsearch_target_hosts: "{{ elasticsearch_target_hosts | default([]) }}"
+    __elasticsearch_inventory_hosts: "{{ ((groups['k8s-master'] | default([])) + (groups['k8s-worker'] | default([]))) | unique | list }}"
+    __elasticsearch_invalid_target_groups: "{{ (elasticsearch_target_groups | default([])) | difference(groups.keys() | list) | list }}"
+
+- name: Resolve Elasticsearch valid and invalid target hosts
+  set_fact:
+    __elasticsearch_valid_target_hosts: "{{ __elasticsearch_target_hosts | intersect(__elasticsearch_inventory_hosts) | list }}"
+    __elasticsearch_invalid_target_hosts: "{{ __elasticsearch_target_hosts | difference(__elasticsearch_inventory_hosts) | list }}"
+
+- name: Warn about invalid Elasticsearch target groups
+  debug:
+    msg: >-
+      WARNING: Elasticsearch target group(s) are not present in inventory:
+      {{ __elasticsearch_invalid_target_groups | join(', ') }}. The role will
+      continue and apply manifests; pods may remain Pending until nodes are
+      labeled with {{ elasticsearch_node_selector_key | default('es-role') }}={{ elasticsearch_node_selector_value | default('all') }}.
+  when: (__elasticsearch_invalid_target_groups | length) > 0
+
+- name: Warn about invalid Elasticsearch target hosts
+  debug:
+    msg: >-
+      WARNING: Elasticsearch target host(s) are not present in k8s-master or
+      k8s-worker inventory groups: {{ __elasticsearch_invalid_target_hosts | join(', ') }}.
+      They will be skipped for auto-label. The role will continue and apply
+      manifests; pods may remain Pending until Kubernetes nodes are labeled
+      with {{ elasticsearch_node_selector_key | default('es-role') }}={{ elasticsearch_node_selector_value | default('all') }}.
+  when: (__elasticsearch_invalid_target_hosts | length) > 0
 
 - name: Initialize Elasticsearch Kubernetes node-name list
   set_fact:
@@ -44,24 +70,55 @@
             )
           ]
       }}
-  loop: "{{ __elasticsearch_target_hosts }}"
+  loop: "{{ __elasticsearch_valid_target_hosts }}"
   loop_control:
     label: "{{ item }}"
 
-- name: Validate Elasticsearch node-set replicas against eligible nodes
+- name: Warn when Elasticsearch has no valid auto-label targets
+  debug:
+    msg: >-
+      WARNING: Elasticsearch has no valid inventory target nodes for auto-label.
+      Manifests will still be applied. Label Kubernetes nodes manually with
+      {{ elasticsearch_node_selector_key | default('es-role') }}={{ elasticsearch_node_selector_value | default('all') }}
+      so Elasticsearch pods can be scheduled.
+  when: (__elasticsearch_target_node_names | length) == 0
+
+- name: Validate Elasticsearch node-set replica values
   assert:
     that:
       - item.value.replicas | int >= 0
-      - item.key != 'master' or item.value.replicas | int >= 1
-      - item.value.replicas | int <= (__elasticsearch_target_hosts | length)
     fail_msg: >-
-      Elasticsearch node set {{ item.key }} requests {{ item.value.replicas }}
-      replica(s), but only {{ __elasticsearch_target_hosts | length }} target
-      node(s) are labeled. Required pod anti-affinity allows at most one
-      {{ item.key }} pod per target node.
+      Elasticsearch node set {{ item.key }} has invalid replicas={{ item.value.replicas }}.
+      Replica count must be zero or greater.
   loop: "{{ elasticsearch_node_sets | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
+
+- name: Warn when Elasticsearch master replicas are zero
+  debug:
+    msg: >-
+      WARNING: Elasticsearch master node set has replicas={{ item.value.replicas }}.
+      Core manifests will still be applied, but post-install setup, Kibana, and
+      exporter will be skipped until at least one master replica can run.
+  loop: "{{ elasticsearch_node_sets | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when:
+    - item.key == 'master'
+    - item.value.replicas | int < 1
+
+- name: Warn when Elasticsearch replicas exceed auto-label target nodes
+  debug:
+    msg: >-
+      WARNING: Elasticsearch node set {{ item.key }} requests {{ item.value.replicas }}
+      replica(s), but only {{ __elasticsearch_target_node_names | length }}
+      valid target node(s) were resolved for auto-label. Required pod
+      anti-affinity allows at most one {{ item.key }} pod per node. Manifests
+      will still be applied; add labels to enough Kubernetes nodes if pods stay Pending.
+  loop: "{{ elasticsearch_node_sets | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: item.value.replicas | int > (__elasticsearch_target_node_names | length)
 
 - name: Validate Elasticsearch node IP network ports
   assert:
@@ -107,51 +164,6 @@
     state: directory
     recurse: true
 
-- name: Read nodes carrying the Elasticsearch scheduling label
-  command:
-    argv:
-      - kubectl
-      - get
-      - nodes
-      - -l
-      - "{{ elasticsearch_node_selector_key | default('es-role') }}"
-      - -o
-      - 'jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'
-  register: __elasticsearch_labeled_nodes
-  changed_when: false
-
-- name: Remove Elasticsearch scheduling label from non-target nodes
-  command:
-    argv:
-      - kubectl
-      - label
-      - node
-      - "{{ item }}"
-      - "{{ elasticsearch_node_selector_key | default('es-role') }}-"
-  loop: >-
-    {{
-      (__elasticsearch_labeled_nodes.stdout_lines | default([]))
-      | difference(__elasticsearch_target_node_names)
-    }}
-  loop_control:
-    label: "{{ item }}"
-  register: __elasticsearch_label_removal
-  changed_when:
-    - __elasticsearch_label_removal.rc == 0
-    - "'not labeled' not in (__elasticsearch_label_removal.stdout | default(''))"
-  failed_when:
-    - __elasticsearch_label_removal.rc != 0
-    - >-
-      'not labeled' not in (
-        (__elasticsearch_label_removal.stdout | default(''))
-        ~ (__elasticsearch_label_removal.stderr | default(''))
-      )
-    - >-
-      'label not found' not in (
-        (__elasticsearch_label_removal.stdout | default(''))
-        ~ (__elasticsearch_label_removal.stderr | default(''))
-      )
-
 - name: Label Elasticsearch target nodes
   command:
     argv:
@@ -167,6 +179,35 @@
   loop: "{{ __elasticsearch_target_node_names }}"
   loop_control:
     label: "{{ item }}"
+  register: __elasticsearch_auto_label_result
+  changed_when:
+    - __elasticsearch_auto_label_result.rc == 0
+    - "'not labeled' not in (__elasticsearch_auto_label_result.stdout | default(''))"
+  failed_when: false
+  when:
+    - elasticsearch_auto_label_nodes | default(true) | bool
+    - (__elasticsearch_target_node_names | length) > 0
+
+- name: Warn when Elasticsearch auto-label fails
+  debug:
+    msg: >-
+      WARNING: Failed to label Kubernetes node {{ item.item }} with
+      {{ elasticsearch_node_selector_key | default('es-role') }}={{ elasticsearch_node_selector_value | default('all') }}.
+      kubectl output: {{ ((item.stdout | default('')) ~ ' ' ~ (item.stderr | default(''))) | trim }}
+      The role will continue and apply manifests; pods may remain Pending until the label exists.
+  loop: "{{ __elasticsearch_auto_label_result.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('unknown') }}"
+  when: item.rc | default(0) != 0
+
+- name: Warn when Elasticsearch auto-label is disabled
+  debug:
+    msg: >-
+      WARNING: elasticsearch_auto_label_nodes=false. The role will apply
+      manifests without labeling nodes. Ensure enough nodes have
+      {{ elasticsearch_node_selector_key | default('es-role') }}={{ elasticsearch_node_selector_value | default('all') }}
+      before waiting for Elasticsearch readiness.
+  when: not (elasticsearch_auto_label_nodes | default(true) | bool)
 
 - name: Render Elasticsearch manifests
   loop:
@@ -201,6 +242,55 @@
   args:
     executable: /bin/bash
 
+- name: Check labeled nodes available for Elasticsearch node sets
+  command:
+    argv:
+      - kubectl
+      - get
+      - nodes
+      - -l
+      - "{{ elasticsearch_node_selector_key | default('es-role') }}={{ item.value.node_selector_role }}"
+      - -o
+      - 'jsonpath={range .items[*]}{.metadata.name}{"\n"}{end}'
+  loop: "{{ elasticsearch_node_sets | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: __elasticsearch_node_set_labeled_nodes
+  changed_when: false
+  failed_when: false
+
+- name: Initialize Elasticsearch scheduling readiness
+  set_fact:
+    __elasticsearch_scheduling_ready: true
+
+- name: Mark Elasticsearch scheduling as not ready when labels are insufficient
+  set_fact:
+    __elasticsearch_scheduling_ready: false
+  loop: "{{ __elasticsearch_node_set_labeled_nodes.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.key | default('unknown') }}"
+  when: >-
+    (item.rc | default(1)) != 0
+    or ((item.stdout_lines | default([])) | length) < (item.item.value.replicas | int)
+    or (item.item.key == 'master' and (item.item.value.replicas | int) < 1)
+
+- name: Warn when Elasticsearch scheduling labels are insufficient
+  debug:
+    msg: >-
+      WARNING: Elasticsearch node set {{ item.item.key }} needs
+      {{ item.item.value.replicas }} labeled node(s) with
+      {{ elasticsearch_node_selector_key | default('es-role') }}={{ item.item.value.node_selector_role }},
+      but found {{ (item.stdout_lines | default([])) | length }}.
+      Core manifests were applied. Pods may remain Pending until enough nodes
+      are labeled. Skipping Elasticsearch readiness-dependent tasks in this run.
+  loop: "{{ __elasticsearch_node_set_labeled_nodes.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.key | default('unknown') }}"
+  when: >-
+    (item.rc | default(1)) != 0
+    or ((item.stdout_lines | default([])) | length) < (item.item.value.replicas | int)
+    or (item.item.key == 'master' and (item.item.value.replicas | int) < 1)
+
 - name: Wait for Elasticsearch StatefulSet rollouts
   loop: "{{ elasticsearch_node_sets | dict2items }}"
   shell: |
@@ -208,7 +298,9 @@
     kubectl -n {{ elasticsearch_namespace }} rollout status statefulset/elasticsearch-{{ item.key }} --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
   args:
     executable: /bin/bash
-  when: item.value.replicas | int > 0
+  when:
+    - __elasticsearch_scheduling_ready | default(false) | bool
+    - item.value.replicas | int > 0
 
 - name: Run Elasticsearch post-install security setup
   shell: |
@@ -223,7 +315,9 @@
     kubectl -n {{ elasticsearch_namespace }} logs job/elasticsearch-post-install || true
   args:
     executable: /bin/bash
-  when: elasticsearch_kibana.enabled | default(true) | bool
+  when:
+    - __elasticsearch_scheduling_ready | default(false) | bool
+    - elasticsearch_kibana.enabled | default(true) | bool
 
 - name: Apply Elasticsearch dependent applications
   shell: |
@@ -236,6 +330,7 @@
     {% endif %}
   args:
     executable: /bin/bash
+  when: __elasticsearch_scheduling_ready | default(false) | bool
 
 - name: Wait for Kibana rollout
   shell: |
@@ -243,7 +338,9 @@
     kubectl -n {{ elasticsearch_namespace }} rollout status deployment/kibana --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
   args:
     executable: /bin/bash
-  when: elasticsearch_kibana.enabled | default(true) | bool
+  when:
+    - __elasticsearch_scheduling_ready | default(false) | bool
+    - elasticsearch_kibana.enabled | default(true) | bool
 
 - name: Wait for Elasticsearch exporter rollout
   shell: |
@@ -251,4 +348,6 @@
     kubectl -n {{ elasticsearch_namespace }} rollout status deployment/elasticsearch-exporter --timeout={{ elasticsearch_rollout_timeout | default('900s') }}
   args:
     executable: /bin/bash
-  when: elasticsearch_exporter.enabled | default(true) | bool
+  when:
+    - __elasticsearch_scheduling_ready | default(false) | bool
+    - elasticsearch_exporter.enabled | default(true) | bool

@@ -143,11 +143,13 @@ sriov_bond_networks:
 # IP pools exporter also requires multus_sriov: true.
 haproxy_exporter:
   listen_address: ":9101"
-  scrape_uri: unix:/var/lib/haproxy/stats
+  scrape_uri: "http://{{ haproxy_stats_bind_host | default('127.0.0.1') }}:{{ haproxy_stats_port | default(8404) }}/;csv"
   extra_args: ""
 
 keepalived_exporter:
   listen_address: ":9165"
+  telemetry_path: /metrics
+  pid_path: /host-run/keepalived.pid
   extra_args: ""
 
 snmp_switch_exporter:
@@ -174,6 +176,9 @@ elasticsearch_network_interface: eth0
 # k8s_node_name for that host in inventory.ini.
 elasticsearch_node_selector_key: es-role
 elasticsearch_node_selector_value: all
+# Best-effort convenience only. Failed or missing labels do not block core
+# manifest apply; pods remain Pending until matching Kubernetes node labels exist.
+elasticsearch_auto_label_nodes: true
 elasticsearch_target_groups:
   - k8s-master
 elasticsearch_target_nodes: []
@@ -429,5 +434,5 @@ exporter_images: >-
     + ([] if 'snmp_exporter' not in k8s_install_services else [snmp_exporter_image])
     + ([] if 'snmp_switch_exporter' not in k8s_install_services else [snmp_switch_exporter_image])
     + ([] if not (('haproxy_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [haproxy_exporter_image])
-    + ([] if not (('keepalived_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [keepalived_exporter_image, keepalived_exporter_tools_image])
+    + ([] if not (('keepalived_exporter' in k8s_install_services) and (setup_ha | default(true) | bool)) else [keepalived_exporter_image])
   }}
