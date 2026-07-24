@@ -1,0 +1,96 @@
+---
+- name: Validate kubeadm join commands are available on join nodes
+  assert:
+    that:
+      - control_join is defined
+      - worker_join is defined
+    fail_msg: >-
+      kubeadm join commands are missing on {{ inventory_hostname }}. Check that
+      kubeadm init generated and published control_join/worker_join on
+      {{ k8s_bootstrap_master }}.
+    success_msg: "kubeadm join commands are available on {{ inventory_hostname }}."
+  when: inventory_hostname != k8s_bootstrap_master
+
+- name: Join additional control-plane nodes one at a time
+  block:
+    - name: Join additional control-plane node
+      shell: |
+        set -Eeuo pipefail
+        cat > {{ __bootstrap_dir }}/join-cluster.sh <<'EOF'
+        set -Eeuo pipefail
+        log() { echo "[$(date '+%F %T')] $*"; }
+        fail() {
+            local rc=$?
+            local line="${BASH_LINENO[0]:-${LINENO}}"
+            echo "[ERROR] ${BASH_SOURCE[1]:-${BASH_SOURCE[0]}} failed at line ${line}: ${BASH_COMMAND} rc=${rc}" >&2
+            exit "$rc"
+        }
+        trap fail ERR
+        log "Starting control-plane kubeadm join"
+        {{ control_join }} --apiserver-advertise-address {{ k8s_ip }}
+        log "Completed control-plane kubeadm join"
+        EOF
+        bash {{ __bootstrap_dir }}/join-cluster.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+      args:
+        executable: /bin/bash
+  rescue:
+    - name: Read control-plane join log tail after failure
+      shell: tail -n 120 {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+      register: __join_cluster_log_tail
+      changed_when: false
+      failed_when: false
+      args:
+        executable: /bin/bash
+
+    - name: Show control-plane join log tail
+      debug:
+        var: __join_cluster_log_tail.stdout_lines
+
+    - name: Fail control-plane join with log path
+      fail:
+        msg: "Control-plane join failed. See {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log"
+  when:
+    - inventory_hostname in k8s_master_hosts
+    - inventory_hostname != k8s_bootstrap_master
+  throttle: 1
+  any_errors_fatal: true
+
+- name: Join worker nodes
+  block:
+    - name: Join worker node
+      shell: |
+        set -Eeuo pipefail
+        cat > {{ __bootstrap_dir }}/join-cluster.sh <<'EOF'
+        set -Eeuo pipefail
+        log() { echo "[$(date '+%F %T')] $*"; }
+        fail() {
+            local rc=$?
+            local line="${BASH_LINENO[0]:-${LINENO}}"
+            echo "[ERROR] ${BASH_SOURCE[1]:-${BASH_SOURCE[0]}} failed at line ${line}: ${BASH_COMMAND} rc=${rc}" >&2
+            exit "$rc"
+        }
+        trap fail ERR
+        log "Starting worker kubeadm join"
+        {{ worker_join }}
+        log "Completed worker kubeadm join"
+        EOF
+        bash {{ __bootstrap_dir }}/join-cluster.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+      args:
+        executable: /bin/bash
+  rescue:
+    - name: Read worker join log tail after failure
+      shell: tail -n 120 {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log
+      register: __join_cluster_log_tail
+      changed_when: false
+      failed_when: false
+      args:
+        executable: /bin/bash
+
+    - name: Show worker join log tail
+      debug:
+        var: __join_cluster_log_tail.stdout_lines
+
+    - name: Fail worker join with log path
+      fail:
+        msg: "Worker join failed. See {{ __bootstrap_dir }}/logs/join-cluster.{{ __session_time }}.log"
+  when: inventory_hostname in k8s_worker_hosts

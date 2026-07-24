@@ -1,0 +1,21 @@
+frontend {{ haproxy_k8s_frontend_name | default('k8s_apiserver') }}
+    bind *:{{ ha_apiserver_port }}
+    mode tcp
+    option tcplog
+    default_backend {{ haproxy_k8s_backend_name | default('k8s_apiserver_backend') }}
+
+backend {{ haproxy_k8s_backend_name | default('k8s_apiserver_backend') }}
+    mode tcp
+    option tcp-check
+    balance roundrobin
+{% for host in groups['k8s_master'] %}
+{% set backup_flag = ' backup' if host != inventory_hostname else '' %}
+    server {{ hostvars[host]['ansible_hostname'] | default(host) }} {{ hostvars[host]['k8s_ip'] }}:{{ localAPIEndpointPort }} check fall 2 rise 3 inter 2s{{ backup_flag }}
+{% endfor %}
+
+listen {{ haproxy_stats_listener_name | default('k8s_haproxy_stats') }}
+    bind {{ haproxy_stats_bind_address | default((haproxy_stats_bind_host | default('127.0.0.1')) ~ ':' ~ (haproxy_stats_port | default(8404))) }}
+    mode http
+    stats enable
+    stats uri /
+    stats refresh 10s

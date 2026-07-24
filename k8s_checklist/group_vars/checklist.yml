@@ -55,7 +55,7 @@ k8s_install_extra_services: >-
 
 k8s_master_hosts: "{{ groups.get('k8s_master', []) }}"
 k8s_worker_hosts: "{{ groups.get('k8s_worker', []) }}"
-k8s_cluster_hosts: "{{ (k8s_master_hosts + k8s_worker_hosts) | unique | list }}"
+k8s_inventory_hosts: "{{ (k8s_master_hosts + k8s_worker_hosts) | unique | list }}"
 k8s_bootstrap_master: "{{ k8s_master_hosts | first }}"
 
 setup_ha: true

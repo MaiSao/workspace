@@ -1,0 +1,36 @@
+#!/bin/env bash
+set -Eeuo pipefail
+log() { echo "[$(date '+%F %T')] $*"; }
+fail() {
+    local rc=$?
+    local line="${BASH_LINENO[0]:-${LINENO}}"
+    echo "[ERROR] ${BASH_SOURCE[1]:-${BASH_SOURCE[0]}} failed at line ${line}: ${BASH_COMMAND} rc=${rc}" >&2
+    exit "$rc"
+}
+trap fail ERR
+
+log "Starting containerd bootstrap"
+dnf install containerd.io -y
+
+mkdir -p /etc/containerd/certs.d/_default
+cat > /etc/containerd/certs.d/_default/hosts.toml <<'EOF'
+[host."{{ registry_protocol }}://{{ __registry_prefix }}"]
+  capabilities = ["pull", "resolve", "push"]
+  skip_verify = true
+EOF
+
+cat > /etc/crictl.yaml <<'EOF'
+runtime-endpoint: {{ criSocket }}
+image-endpoint: {{ criSocket }}
+timeout: 2
+debug: false
+pull-image-on-create: true
+EOF
+
+systemctl enable --now containerd
+systemctl enable --now kubelet
+sed -i 's/NF_TABLES="raw mangle filter nat"/NF_TABLES="raw mangle filter"/g' /usr/libexec/iptables/iptables.init
+systemctl enable iptables
+systemctl stop iptables
+systemctl restart containerd
+log "Completed containerd bootstrap"

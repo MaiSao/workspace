@@ -1,0 +1,173 @@
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: {{ localAPIEndpointAddress }}
+  bindPort: {{ localAPIEndpointPort }}
+nodeRegistration:
+  criSocket: {{ criSocket }}
+
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: {{ k8s_version }}
+certificateValidityPeriod: {{ certificateValidityPeriod }}
+caCertificateValidityPeriod: {{ caCertificateValidityPeriod }}
+featureGates:
+{% for key, value in feature_gates.items() %}
+  {{ key }}: {{ value | lower }}
+{% endfor %}
+apiServer:
+  certSANs:
+{%for host in groups['k8s_master']%}
+  - {{ hostvars[host]['k8s_ip'] }}
+{% endfor %}
+{% if setup_ha | default(true) | bool %}
+  - {{ k8s_master_ip }}
+{% endif %}
+  - 127.0.0.1
+  - {{ clusterName }}
+  - {{ clusterName }}.default
+  - {{ clusterName }}.default.svc
+  - {{ clusterName }}.default.svc.{{ networking_dnsDomain }}
+  extraVolumes:
+  - name: audit-policy
+    hostPath: /etc/kubernetes/audit-policy.yaml
+    mountPath: /etc/kubernetes/audit-policy.yaml
+    readOnly: true
+  - name: audit-logs
+    hostPath: {{ k8s_auditlog_dir }}
+    mountPath: {{ k8s_auditlog_dir }}
+    readOnly: false
+    pathType: DirectoryOrCreate
+  extraArgs:
+  - name: audit-policy-file
+    value: /etc/kubernetes/audit-policy.yaml
+  - name: audit-log-path
+    value: {{ k8s_auditlog_dir }}/audit.log
+  - name: audit-log-maxage
+    value: "{{ apiserver_audit_log_maxage }}"
+  - name: audit-log-maxbackup
+    value: "{{ apiserver_audit_log_maxbackup }}"
+  - name: audit-log-maxsize
+    value: "{{ apiserver_audit_log_maxsize }}"
+  - name: authorization-mode
+    value: {{ apiserver_authorization_mode }}
+  - name: event-ttl
+    value: {{ apiserver_event_ttl }}
+  - name: kubelet-preferred-address-types
+    value: {{ apiserver_kubelet_preferred_address_types }}
+  - name: service-node-port-range
+    value: {{ apiserver_service_node_port_range }}
+certificatesDir: {{ certificatesDir }}
+clusterName: {{ clusterName }}
+{% if setup_ha | default(true) | bool %}
+controlPlaneEndpoint: "{{ k8s_master_ip }}:{{ ha_apiserver_port }}"
+{% else %}
+controlPlaneEndpoint: "{{ localAPIEndpointAddress }}:{{ localAPIEndpointPort }}"
+{% endif %}
+
+controllerManager: 
+  extraArgs:
+  - name: bind-address
+    value: "{{ controllerManager_bind_address }}"
+  - name: cluster-signing-duration
+    value: "{{ controllerManager_cluster_signing_duration }}"
+  - name: terminated-pod-gc-threshold
+    value: "{{ controllerManager_terminated_pod_gc_threshold }}"
+etcd:
+  local:
+    dataDir: {{ etcdDataDir }}
+
+imageRepository: "{{ __registry_prefix }}/{{ imageRepositoryProject }}"
+networking:
+  dnsDomain: {{ networking_dnsDomain }}
+  podSubnet: {{ networking_podSubnet }}
+  serviceSubnet: {{ networking_serviceSubnet }}
+scheduler:
+  extraArgs:
+  - name: bind-address
+    value: "{{ scheduler_bind_address }}"
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    cacheTTL: 0s
+    enabled: true
+  x509:
+    clientCAFile: /etc/kubernetes/pki/ca.crt
+authorization:
+  mode: Webhook
+  webhook:
+    cacheAuthorizedTTL: 0s
+    cacheUnauthorizedTTL: 0s
+cgroupDriver: systemd
+resolvConf: ""
+clusterDNS:
+- 10.96.0.10
+clusterDomain: cluster.local
+evictionPressureTransitionPeriod: 0s
+fileCheckFrequency: 0s
+healthzBindAddress: {{ kubelet_healthzBindAddress }}
+healthzPort: {{ kubelet_healthzPort }}
+readOnlyPort: {{ kubelet_readOnlyPort }}
+httpCheckFrequency: 0s
+imageMinimumGCAge: 0s
+logging: {}
+nodeStatusReportFrequency: 0s
+nodeStatusUpdateFrequency: 0s
+rotateCertificates: true
+runtimeRequestTimeout: 0s
+shutdownGracePeriod: 0s
+shutdownGracePeriodCriticalPods: 0s
+staticPodPath: /etc/kubernetes/manifests
+streamingConnectionIdleTimeout: 0s
+syncFrequency: 0s
+volumeStatsAggPeriod: 0s
+imageGCHighThresholdPercent: {{ kubelet_imageGCHighThresholdPercent }}
+imageGCLowThresholdPercent: {{ kubelet_imageGCLowThresholdPercent }}
+evictionHard: 
+{{ kubelet_evictionHard | indent(2, true) }}
+cpuManagerPolicy: static
+cpuManagerReconcilePeriod: 5s
+kubeReserved: 
+{{ kubelet_kubeReserved | indent(2, true) }}
+systemReserved: 
+{{ kubelet_systemReserved | indent(2, true) }}
+reservedSystemCPUs: {{ kubelet_reservedSystemCPUs | default('') }}
+serverTLSBootstrap: {{ kubelet_serverTLSBootstrap }}
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+bindAddress: {{ kubeproxy_bindAddress }}
+clientConnection:
+ acceptContentTypes: ""
+ burst: 10
+ contentType: application/vnd.kubernetes.protobuf
+ kubeconfig: /var/lib/kube-proxy/kubeconfig.conf
+ qps: 5
+clusterCIDR: ""
+configSyncPeriod: 15m0s
+conntrack:
+ maxPerCore: 32768
+ min: 131072
+ tcpCloseWaitTimeout: 1h0m0s
+ tcpEstablishedTimeout: 24h0m0s
+enableProfiling: false
+healthzBindAddress: {{ kubeproxy_healthzBindAddress }}
+iptables:
+ masqueradeAll: false
+ masqueradeBit: 14
+ minSyncPeriod: 0s
+ syncPeriod: 30s
+ipvs:
+ excludeCIDRs: null
+ minSyncPeriod: 0s
+ scheduler: ""
+ syncPeriod: 30s
+metricsBindAddress: {{ kubeproxy_metricsBindAddress }}
+mode: ""
+oomScoreAdj: -999
+portRange: ""

@@ -1,0 +1,1630 @@
+---
+#===============================================================================
+# KUBERNETES PAT INPUTS
+# This file is self-contained. It intentionally does not import variables from
+# k8s_auto so PAT can be run after installation or against another cluster.
+#===============================================================================
+
+pat_run_id: "{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
+pat_output_dir: /root/k8s_pat/reports
+pat_report_prefix: "k8s-pat-{{ pat_run_id }}"
+pat_kubeconfig: /etc/kubernetes/admin.conf
+pat_namespace: k8s-pat
+pat_evidence_dir: /root/k8s_pat/evidence
+pat_app_namespace_exclude_regex: '^(default|kube-system|kube-public|kube-node-lease|kyverno|local-path-storage|fluentbit|k8s-pat)$'
+pat_rollout_timeout: 180s
+pat_command_timeout_seconds: 30
+pat_fail_play_on_failed_cases: false
+pat_record_catalog_gap_cases: false
+pat_api_latency_p99_ms: 1000
+pat_dns_latency_p95_ms: 100
+pat_soak_minutes: 1440
+pat_soak_iterations: 60
+
+pat_master_hosts: "{{ groups.get('k8s_master', []) }}"
+pat_worker_hosts: "{{ groups.get('k8s_worker', []) }}"
+pat_cluster_hosts: "{{ (pat_master_hosts + pat_worker_hosts) | unique | list }}"
+pat_bootstrap_master: "{{ pat_master_hosts | first }}"
+pat_allow_master_hybrid: true
+pat_min_worker_count: 3
+pat_registry_prefix: docker-registry:4000
+pat_test_image: "{{ pat_registry_prefix }}/vht/busybox:1.37.0"
+pat_curl_image: "{{ pat_registry_prefix }}/efk/curl:8.11.1"
+pat_kubectl_image: "{{ pat_registry_prefix }}/bitnami/kubectl:1.30.1"
+
+# Update this from the currently approved Kubernetes support window.
+# On 2026-07-24, Kubernetes 1.31 is already EOL.
+pat_min_supported_k8s_minor: 32
+
+# Applicability switches. A case with an unavailable feature becomes N/A with
+# its configured reason and recommendation, instead of silently passing.
+pat_features:
+  ha_control_plane: true
+  haproxy_keepalived: true
+  multus: true
+  whereabouts: true
+  macvlan: true
+  sriov: false
+  hpa: false
+  ingress_or_gateway: false
+  waf_or_api_gateway: false
+  csi_storage: false
+  local_path_stateful: true
+  kyverno_or_psa: true
+  prometheus_compatible_monitoring: false
+  log_backend: true
+  registry_policy: false
+  secret_encryption_at_rest: false
+
+# Mirrors the current k8s_auto service plan. Keep this section aligned with
+# ../k8s_auto/group_vars/services.yml when the installer profile changes.
+pat_installed_services:
+  common: true
+  containerd: true
+  haproxy: true
+  keepalived: true
+  kubeadm: true
+  calico: true
+  multus: true
+  whereabouts: true
+  macvlan: true
+  sriov: false
+  coredns: true
+  metrics_server: true
+  kube_state_metrics: true
+  kubelet_csr_approver: true
+  kyverno: true
+  etcd_jobs: true
+  cert_exporter: true
+  snmp_exporter: true
+  snmp_switch_exporter: true
+  haproxy_exporter: true
+  keepalived_exporter: true
+  ip_pools_exporter: false
+  k8s_tuning: true
+  fluentbit: true
+  local_path_provisioner: true
+  elasticsearch: false
+
+pat_expected_macvlan_nads:
+  - ocs-cgw-data-gx
+  - ocs-cgw-data-gy
+  - ocs-cgw-data-n7
+  - ocs-cgw-data-n40
+  - ocs-authen-server
+  - ocs-cgw-pro
+  - ocs-app
+  - aerospike-app
+  - aerospike-linksite
+
+pat_expected_kyverno_policies:
+  - block-specific-nodeports
+  - enforce-run-as-nonroot
+  - require-pod-resources
+
+pat_expected_exporter_daemonsets:
+  - snmp-exporter
+  - haproxy-exporter
+  - keepalived-exporter
+
+pat_allowed_cluster_admin_subject_regex: 'Group::system:masters'
+
+# Synthetic and chaos execution gates. Keep them false on production until the
+# PAT namespace quota, QPS, PVC size and cleanup behavior are approved.
+pat_enable_prod_synthetic: false
+pat_enable_chaos: false
+pat_enable_lab_dr: false
+pat_require_manual_evidence: true
+pat_chaos_target_worker_node: ""
+pat_chaos_target_master_node: ""
+pat_chaos_target_etcd_member_host: ""
+pat_chaos_target_cni_node: "{{ pat_chaos_target_worker_node }}"
+pat_lab_restore_evidence_file: "{{ pat_evidence_dir }}/PAT-D12-etcd-restore.md"
+pat_runtime_restart_evidence_file: "{{ pat_evidence_dir }}/PAT-D04-runtime-restart.md"
+pat_control_plane_failure_evidence_file: "{{ pat_evidence_dir }}/PAT-D07-control-plane-failure.md"
+pat_vip_failover_evidence_file: "{{ pat_evidence_dir }}/PAT-D08-vip-failover.md"
+pat_etcd_member_failure_evidence_file: "{{ pat_evidence_dir }}/PAT-D09-etcd-member-failure.md"
+pat_stateful_volume_failure_evidence_file: "{{ pat_evidence_dir }}/PAT-D11-stateful-volume-failure.md"
+pat_lab_cert_renew_evidence_file: "{{ pat_evidence_dir }}/PAT-D13-cert-renew.md"
+pat_lab_join_detach_evidence_file: "{{ pat_evidence_dir }}/PAT-D14-join-detach.md"
+pat_lab_upgrade_evidence_file: "{{ pat_evidence_dir }}/PAT-D15-upgrade.md"
+pat_manual_topology_evidence_file: "{{ pat_evidence_dir }}/PAT-F01-topology.md"
+pat_manual_runbook_evidence_file: "{{ pat_evidence_dir }}/PAT-F02-runbook.md"
+pat_manual_firewall_evidence_file: "{{ pat_evidence_dir }}/PAT-F03-firewall.md"
+pat_manual_route_waf_evidence_file: "{{ pat_evidence_dir }}/PAT-F04-route-waf.md"
+pat_manual_registry_evidence_file: "{{ pat_evidence_dir }}/PAT-F05-registry.md"
+pat_manual_source_secret_scan_file: "{{ pat_evidence_dir }}/PAT-B10-source-secret-scan.md"
+pat_synthetic_alert_evidence_file: "{{ pat_evidence_dir }}/PAT-B13-synthetic-alert.md"
+
+pat_case_defaults:
+  enabled: true
+  applicable: true
+  scope: cluster
+  priority: P0
+  mode: PROD-RO
+  category: baseline
+  na_reason: ""
+  recommendation: "Review the case and define remediation in the PAT report."
+
+pat_catalog_case_ids:
+  - PAT-A01
+  - PAT-A02
+  - PAT-A03
+  - PAT-A04
+  - PAT-A05
+  - PAT-A06
+  - PAT-A07
+  - PAT-A08
+  - PAT-A09
+  - PAT-A10
+  - PAT-A11
+  - PAT-A12
+  - PAT-A13
+  - PAT-A14
+  - PAT-A15
+  - PAT-A16
+  - PAT-B01
+  - PAT-B02
+  - PAT-B03
+  - PAT-B04
+  - PAT-B05
+  - PAT-B06
+  - PAT-B07
+  - PAT-B08
+  - PAT-B09
+  - PAT-B10
+  - PAT-B11
+  - PAT-B12
+  - PAT-B13
+  - PAT-B14
+  - PAT-B15
+  - PAT-C01
+  - PAT-C02
+  - PAT-C03
+  - PAT-C04
+  - PAT-C05
+  - PAT-C06
+  - PAT-C07
+  - PAT-C08
+  - PAT-C09
+  - PAT-C10
+  - PAT-D01
+  - PAT-D02
+  - PAT-D03
+  - PAT-D04
+  - PAT-D05
+  - PAT-D06
+  - PAT-D07
+  - PAT-D08
+  - PAT-D09
+  - PAT-D10
+  - PAT-D11
+  - PAT-D12
+  - PAT-D13
+  - PAT-D14
+  - PAT-D15
+  - PAT-E01
+  - PAT-E02
+  - PAT-E03
+  - PAT-E04
+  - PAT-E05
+  - PAT-F01
+  - PAT-F02
+  - PAT-F03
+  - PAT-F04
+  - PAT-F05
+  - PAT-P01
+  - PAT-P02
+  - PAT-P03
+  - PAT-P04
+  - PAT-P05
+  - PAT-P06
+  - PAT-P07
+  - PAT-P08
+  - PAT-P09
+  - PAT-P10
+  - PAT-P11
+  - PAT-P12
+  - PAT-P13
+  - PAT-P14
+  - PAT-P15
+  - PAT-P16
+  - PAT-P17
+  - PAT-P18
+  - PAT-P19
+  - PAT-P20
+  - PAT-P21
+  - PAT-P22
+
+pat_cases:
+  - id: PAT-A01
+    title: Inventory and HA topology baseline
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: baseline
+    command: |
+      test {{ pat_master_hosts | length }} -ge 3
+      test $(( {{ pat_master_hosts | length }} % 2 )) -eq 1
+      {% if not (pat_allow_master_hybrid | bool) %}
+      test {{ pat_worker_hosts | length }} -ge {{ pat_min_worker_count | int }}
+      {% endif %}
+      test {{ pat_cluster_hosts | length }} -ge 3
+      kubectl get nodes --no-headers | wc -l | awk '{ exit !($1 >= {{ pat_cluster_hosts | length }}) }'
+    success_hint: "Inventory has HA-sized control-plane and matches the approved worker or master-hybrid topology."
+    recommendation: "Align inventory, node registration and failure-domain design; if master-hybrid is not approved, add worker nodes."
+
+  - id: PAT-A02
+    title: Minimum node CPU, memory and filesystem headroom
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: baseline
+    command: |
+      cpu_count="$(nproc)"
+      mem_mib="$(awk '/MemTotal/ { print int($2 / 1024) }' /proc/meminfo)"
+      root_avail_gib="$(df -BG / | awk 'NR==2 { gsub("G","",$4); print $4 }')"
+      test "${cpu_count}" -ge 4
+      test "${mem_mib}" -ge 8192
+      test "${root_avail_gib}" -ge 20
+    success_hint: "Node meets the minimum PAT sizing floor."
+    recommendation: "Increase node resources or document an approved sizing exception with capacity evidence."
+
+  - id: PAT-A03
+    title: OS prerequisites, swap and time sync
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: baseline
+    command: |
+      if swapon --show --noheadings | grep -q .; then
+        echo "swap is enabled"
+        exit 1
+      fi
+      timedatectl show -p NTPSynchronized --value | grep -Fx true
+    success_hint: "Swap is off and node time is synchronized."
+    recommendation: "Apply the approved swap policy and fix NTP/time synchronization before PAT sign-off."
+
+  - id: PAT-A04
+    title: Kubernetes version support baseline
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: lifecycle
+    command: |
+      minor="$(
+        kubectl version -o json |
+        sed -n 's/.*"minor": *"\([0-9][0-9]*\).*/\1/p' |
+        tail -1
+      )"
+      test -n "${minor}"
+      test "${minor}" -ge {{ pat_min_supported_k8s_minor }}
+    success_hint: "Kubernetes minor version is within the configured support window."
+    recommendation: "Upgrade to a supported Kubernetes minor and verify version skew/API deprecations."
+
+  - id: PAT-A05
+    title: Core node services are active
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: baseline
+    command: |
+      systemctl is-active --quiet containerd
+      systemctl is-active --quiet kubelet
+    success_hint: "containerd and kubelet are active."
+    recommendation: "Repair the inactive runtime or kubelet service and inspect recent journal errors."
+
+  - id: PAT-A06
+    title: Kubernetes API livez and readyz
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: control-plane
+    command: |
+      kubectl get --raw=/livez | grep -Fx ok
+      kubectl get --raw=/readyz | grep -Fx ok
+    success_hint: "API livez and readyz endpoints are healthy."
+    recommendation: "Inspect apiserver readyz verbose output, etcd health and control-plane component logs."
+
+  - id: PAT-A07
+    title: Installer HAProxy and Keepalived API VIP
+    priority: P0
+    mode: PROD-RO
+    scope: master
+    category: control-plane
+    applicable: "{{ (pat_installed_services.haproxy | bool) and (pat_installed_services.keepalived | bool) and (pat_features.haproxy_keepalived | bool) }}"
+    na_reason: "HAProxy/Keepalived API HA is not enabled in the installer profile."
+    command: |
+      systemctl is-active --quiet haproxy
+      systemctl is-active --quiet keepalived
+      timeout 5 bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8443'
+    success_hint: "HAProxy and Keepalived are active on this master and the local HA frontend is reachable."
+    recommendation: "Repair HAProxy/Keepalived systemd units, backend config or VIP health script before PAT."
+
+  - id: PAT-A08
+    title: Nodes Ready without pressure conditions
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: node-health
+    command: |
+      kubectl get nodes --no-headers | awk '$2 != "Ready" { print; bad=1 } END { exit bad }'
+      test -z "$(
+        kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .status.conditions[?(@.status=="True")]}{.type}{" "}{end}{"\n"}{end}' |
+        awk '/MemoryPressure|DiskPressure|PIDPressure|NetworkUnavailable/ { print }'
+      )"
+    success_hint: "All nodes are Ready and have no active pressure condition."
+    recommendation: "Resolve node pressure, networking or kubelet issues before running synthetic PAT."
+
+  - id: PAT-A09
+    title: Control-plane static pod count and readiness
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: control-plane
+    command: |
+      for selector in component=kube-apiserver component=kube-controller-manager component=kube-scheduler component=etcd; do
+        count="$(kubectl -n kube-system get pods -l "${selector}" --field-selector=status.phase=Running --no-headers | wc -l)"
+        test "${count}" -eq {{ pat_master_hosts | length }}
+      done
+    success_hint: "Control-plane static pods match expected master count."
+    recommendation: "Recover missing or unhealthy static pods before PAT approval."
+
+  - id: PAT-A10
+    title: Etcd cluster health
+    priority: P0
+    mode: PROD-RO
+    scope: master
+    category: control-plane
+    command: |
+      if command -v etcdctl >/dev/null 2>&1; then
+        ETCDCTL_API=3 etcdctl \
+          --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+          --cert=/etc/kubernetes/pki/etcd/peer.crt \
+          --key=/etc/kubernetes/pki/etcd/peer.key \
+          --endpoints=https://127.0.0.1:2379 \
+          endpoint health
+      else
+        curl -fsS --max-time 5 http://127.0.0.1:2381/health | grep -F true
+      fi
+    success_hint: "Local etcd endpoint is healthy."
+    recommendation: "Check etcd member status, alarms, disk latency and certificate configuration."
+
+  - id: PAT-A11
+    title: Kubernetes certificates are not near expiry
+    priority: P0
+    mode: PROD-RO
+    scope: master
+    category: certificates
+    command: |
+      kubeadm certs check-expiration >/tmp/k8s-pat-certs.txt
+      awk 'NR > 1 && $0 ~ /days/ { if ($(NF-1) + 0 < 90) bad=1 } END { exit bad }' /tmp/k8s-pat-certs.txt
+    success_hint: "kubeadm-managed certificates are not within the 90-day warning window."
+    recommendation: "Renew or rotate certificates and verify alert routing for expiry thresholds."
+
+  - id: PAT-A12
+    title: API audit logging is configured
+    priority: P0
+    mode: PROD-RO
+    scope: master
+    category: audit
+    command: |
+      grep -q -- '--audit-policy-file=' /etc/kubernetes/manifests/kube-apiserver.yaml
+      grep -q -- '--audit-log-path=' /etc/kubernetes/manifests/kube-apiserver.yaml
+    success_hint: "API server manifest contains audit policy and audit log path."
+    recommendation: "Enable audit policy/logging on every API server and forward sanitized audit events."
+
+  - id: PAT-A13
+    title: Core add-ons are rolled out
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: addon-health
+    command: |
+      kubectl -n kube-system rollout status deployment/coredns --timeout={{ pat_rollout_timeout }}
+      kubectl -n kube-system rollout status daemonset/calico-node --timeout={{ pat_rollout_timeout }}
+      kubectl -n kube-system rollout status daemonset/kube-proxy --timeout={{ pat_rollout_timeout }}
+    success_hint: "CoreDNS, Calico and kube-proxy are healthy."
+    recommendation: "Fix failed add-on rollout before functional or performance PAT."
+
+  - id: PAT-A14
+    title: Node disk and inode headroom
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: capacity
+    command: |
+      df -P / /var 2>/dev/null | awk 'NR > 1 { gsub("%","",$5); if ($5 >= 80) { print; bad=1 } } END { exit bad }'
+      df -Pi / /var 2>/dev/null | awk 'NR > 1 { gsub("%","",$5); if ($5 >= 80) { print; bad=1 } } END { exit bad }'
+    success_hint: "Root and var filesystems have disk and inode headroom."
+    recommendation: "Clean up disk/image/log usage or expand filesystems before continuing PAT."
+
+  - id: PAT-A15
+    title: Installer etcd backup and defrag CronJobs
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: backup
+    applicable: "{{ pat_installed_services.etcd_jobs | bool }}"
+    na_reason: "etcd_jobs role is disabled in the installer profile."
+    command: |
+      kubectl -n kube-system get cronjob etcd-backup-rotate
+      kubectl -n kube-system get cronjob etcd-defrag
+      kubectl -n kube-system get cronjob etcd-backup-rotate -o jsonpath='{.spec.schedule}' | grep -q .
+    success_hint: "Installer etcd backup/defrag CronJobs exist and have schedules."
+    recommendation: "Enable etcd_jobs or attach an approved external backup/defrag mechanism with restore evidence."
+
+  - id: PAT-A16
+    title: Installer observability components are present
+    priority: P1
+    mode: PROD-RO
+    scope: cluster
+    category: observability
+    command: |
+      kubectl -n kube-system rollout status deployment/kube-state-metrics --timeout={{ pat_rollout_timeout }}
+      kubectl -n kube-system get service kube-state-metrics
+      kubectl -n kube-system get service cert-exporter
+      kubectl -n kube-system get service snmp-switch-exporter-nodeport-svc
+    success_hint: "Installer observability building blocks are present."
+    recommendation: "Connect these exporters to an approved metric backend and run synthetic alert delivery PAT."
+
+  - id: PAT-B01
+    title: CoreDNS service discovery smoke test
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: functional
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic tests are disabled by pat_enable_prod_synthetic."
+    command: |
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} run dns-smoke-{{ pat_run_id | lower }} \
+        --image={{ pat_test_image }} --restart=Never --command -- sh -c 'nslookup kubernetes.default.svc.cluster.local && nslookup kube-dns.kube-system.svc.cluster.local'
+      kubectl -n {{ pat_namespace }} wait --for=condition=Ready pod/dns-smoke-{{ pat_run_id | lower }} --timeout={{ pat_rollout_timeout }} || true
+      kubectl -n {{ pat_namespace }} wait --for=condition=Succeeded pod/dns-smoke-{{ pat_run_id | lower }} --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} logs pod/dns-smoke-{{ pat_run_id | lower }} | grep -F kubernetes.default.svc.cluster.local
+      kubectl -n {{ pat_namespace }} delete pod/dns-smoke-{{ pat_run_id | lower }} --ignore-not-found=true --wait=true
+    success_hint: "Synthetic pod can resolve Kubernetes service DNS."
+    recommendation: "Enable controlled synthetic PAT after namespace quota/cleanup is approved; if enabled and failed, inspect CoreDNS and CNI."
+
+  - id: PAT-B02
+    title: Primary CNI same-node and cross-node connectivity
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: functional
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic connectivity tests are disabled by pat_enable_prod_synthetic."
+    command: |
+      kubectl get nodes --no-headers | awk '$2 == "Ready" { ready++ } END { exit !(ready >= 2) }'
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} delete pod pat-net-server pat-net-client --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} run pat-net-server --image={{ pat_test_image }} --restart=Never --labels=app=pat-net-server --command -- sh -c 'mkdir -p /www; echo ok >/www/index.html; httpd -f -p 8080 -h /www'
+      kubectl -n {{ pat_namespace }} wait --for=condition=Ready pod/pat-net-server --timeout={{ pat_rollout_timeout }}
+      server_ip="$(kubectl -n {{ pat_namespace }} get pod pat-net-server -o jsonpath='{.status.podIP}')"
+      kubectl -n {{ pat_namespace }} run pat-net-client --image={{ pat_test_image }} --restart=Never --command -- sh -c "wget -qO- http://${server_ip}:8080 | grep -Fx ok"
+      kubectl -n {{ pat_namespace }} wait --for=condition=Succeeded pod/pat-net-client --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} delete pod pat-net-server pat-net-client --ignore-not-found=true --wait=true
+    success_hint: "Primary CNI synthetic connectivity test completed."
+    recommendation: "Enable synthetic PAT with namespace quota; if failed, inspect Calico node status, routes, MTU and NetworkPolicy behavior."
+
+  - id: PAT-B03
+    title: NetworkPolicy default-deny and allowlist behavior
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: security
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic NetworkPolicy tests are disabled by pat_enable_prod_synthetic."
+    command: |
+      kubectl get networkpolicy --all-namespaces >/dev/null
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} delete pod pat-np-server pat-np-client --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} delete networkpolicy pat-default-deny pat-allow-client --ignore-not-found=true
+      kubectl -n {{ pat_namespace }} run pat-np-server --image={{ pat_test_image }} --restart=Never --labels=app=pat-np-server --command -- sh -c 'mkdir -p /www; echo ok >/www/index.html; httpd -f -p 8080 -h /www'
+      kubectl -n {{ pat_namespace }} wait --for=condition=Ready pod/pat-np-server --timeout={{ pat_rollout_timeout }}
+      server_ip="$(kubectl -n {{ pat_namespace }} get pod pat-np-server -o jsonpath='{.status.podIP}')"
+      cat <<'EOF' | kubectl apply -f -
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: pat-default-deny
+        namespace: {{ pat_namespace }}
+      spec:
+        podSelector: {}
+        policyTypes: ["Ingress", "Egress"]
+      EOF
+      kubectl -n {{ pat_namespace }} run pat-np-client --image={{ pat_test_image }} --restart=Never --labels=app=pat-np-client --command -- sh -c "wget -T 5 -qO- http://${server_ip}:8080 && exit 1 || exit 0"
+      kubectl -n {{ pat_namespace }} wait --for=condition=Succeeded pod/pat-np-client --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} delete pod pat-np-client --ignore-not-found=true --wait=true
+      cat <<'EOF' | kubectl apply -f -
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: pat-allow-client
+        namespace: {{ pat_namespace }}
+      spec:
+        podSelector:
+          matchLabels:
+            app: pat-np-server
+        ingress:
+          - from:
+              - podSelector:
+                  matchLabels:
+                    app: pat-np-client
+            ports:
+              - protocol: TCP
+                port: 8080
+        policyTypes: ["Ingress"]
+      EOF
+      kubectl -n {{ pat_namespace }} run pat-np-client --image={{ pat_test_image }} --restart=Never --labels=app=pat-np-client --command -- sh -c "wget -qO- http://${server_ip}:8080 | grep -Fx ok"
+      kubectl -n {{ pat_namespace }} wait --for=condition=Succeeded pod/pat-np-client --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} delete pod pat-np-server pat-np-client --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} delete networkpolicy pat-default-deny pat-allow-client --ignore-not-found=true
+    success_hint: "NetworkPolicy behavior was validated by synthetic positive/negative traffic."
+    recommendation: "Enable bounded NetworkPolicy synthetic tests; failures require Calico policy/controller inspection."
+
+  - id: PAT-B04
+    title: Installer Multus, Whereabouts and Macvlan objects
+    priority: P1/P2
+    mode: PROD-RO
+    scope: cluster
+    category: functional
+    applicable: "{{ (pat_features.multus | bool) and (pat_installed_services.multus | bool) }}"
+    na_reason: "Multus is not enabled in the installer profile."
+    command: |
+      kubectl get crd network-attachment-definitions.k8s.cni.cncf.io
+      kubectl -n kube-system rollout status daemonset/kube-multus-ds --timeout={{ pat_rollout_timeout }}
+      {% if pat_installed_services.whereabouts | bool %}
+      kubectl get crd ippools.whereabouts.cni.cncf.io
+      kubectl -n kube-system get cronjob ippool-cleaner
+      {% endif %}
+      {% if pat_features.macvlan | bool %}
+      {% for nad in pat_expected_macvlan_nads %}
+      kubectl -n default get network-attachment-definition {{ nad }}
+      {% endfor %}
+      {% endif %}
+      if [ -n "{{ pat_usage_nad_references | default('') }}" ]; then
+        echo "{{ pat_usage_nad_references }}" | grep -q .
+      fi
+    success_hint: "Installer secondary-network objects are present and Multus is rolled out."
+    recommendation: "Fix Multus/Whereabouts/Macvlan role output, then run a synthetic pod attachment/IPAM leak test."
+
+  - id: PAT-B05
+    title: Service and optional north-south routing
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: functional
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic Service/route tests are disabled by pat_enable_prod_synthetic."
+    command: |
+      kubectl get endpointslices --all-namespaces >/dev/null
+      kubectl get services --all-namespaces >/dev/null
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} delete deploy pat-web --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} delete service pat-web --ignore-not-found=true
+      kubectl -n {{ pat_namespace }} create deployment pat-web --image={{ pat_test_image }} --replicas=2 -- sh -c 'mkdir -p /www; echo ok >/www/index.html; httpd -f -p 8080 -h /www'
+      kubectl -n {{ pat_namespace }} rollout status deployment/pat-web --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} expose deployment pat-web --port=8080 --target-port=8080
+      kubectl -n {{ pat_namespace }} run pat-web-client --image={{ pat_test_image }} --restart=Never --command -- sh -c 'wget -qO- http://pat-web:8080 | grep -Fx ok'
+      kubectl -n {{ pat_namespace }} wait --for=condition=Succeeded pod/pat-web-client --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} get endpointslice -l kubernetes.io/service-name=pat-web -o jsonpath='{.items[*].endpoints[*].addresses[*]}' | grep -q .
+      kubectl -n {{ pat_namespace }} delete pod pat-web-client --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} delete service pat-web --ignore-not-found=true
+      kubectl -n {{ pat_namespace }} delete deploy pat-web --ignore-not-found=true --wait=true
+    success_hint: "Service routing synthetic test completed."
+    recommendation: "Enable synthetic Service test; if Ingress/Gateway is required, also enable PAT-P18."
+
+  - id: PAT-B06
+    title: Installer Local Path Provisioner availability
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: storage
+    applicable: "{{ pat_installed_services.local_path_provisioner | bool }}"
+    na_reason: "Local Path Provisioner is disabled in the installer profile."
+    command: |
+      kubectl get namespace local-path-storage
+      kubectl -n local-path-storage rollout status deployment/local-path-provisioner --timeout={{ pat_rollout_timeout }}
+      kubectl get storageclass local-path
+      kubectl -n local-path-storage get configmap local-path-config
+    success_hint: "Local Path Provisioner objects are present and healthy."
+    recommendation: "Repair Local Path Provisioner or define the production storage class expected by stateful workloads."
+
+  - id: PAT-B07
+    title: Production workload replica spread and PDB baseline
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: resilience
+    command: |
+      kubectl get deploy --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{.spec.replicas}{"\n"}{end}' |
+        awk '$1 !~ /^(kube-system|kyverno|local-path-storage|fluentbit)\\// && $2 < 2 { print; bad=1 } END { exit bad }'
+      if [ -n "{{ pat_usage_app_namespaces | default('') }}" ]; then
+        test {{ pat_usage_pdb_count | default(0) | int }} -gt 0
+      fi
+    success_hint: "No non-system Deployment with fewer than two replicas was found."
+    recommendation: "Set production replicas/topology/PDB according to workload SLO or add an approved exception."
+
+  - id: PAT-B08
+    title: Workload probes baseline
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: functional
+    command: |
+      kubectl get deploy,statefulset --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{range .spec.template.spec.containers[*]}{.readinessProbe}{"|"}{.livenessProbe}{" "}{end}{"\n"}{end}' |
+        awk '$1 !~ /^(kube-system|kyverno|local-path-storage|fluentbit)\\// && $0 !~ /map\\[/ { print; bad=1 } END { exit bad }'
+    success_hint: "Non-system long-running workloads expose probe configuration."
+    recommendation: "Add readiness for traffic-serving workloads, startup probes for slow boot, and liveness only where it detects unrecoverable hangs."
+
+  - id: PAT-B09
+    title: Workload resource requests and limits
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: capacity
+    command: |
+      kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{range .spec.containers[*]}{.resources.requests.cpu}{","}{.resources.requests.memory}{","}{.resources.limits.cpu}{","}{.resources.limits.memory}{" "}{end}{"\n"}{end}' |
+        awk '$1 !~ /^(kube-system|kyverno|local-path-storage|fluentbit)\\// && $0 ~ /,,|^ *$/ { print; bad=1 } END { exit bad }'
+    success_hint: "Non-system pods have CPU/memory request and limit evidence."
+    recommendation: "Set resource requests/limits, namespace quota and eviction guardrails before production PAT."
+
+  - id: PAT-B10
+    title: Installer plaintext credential static check
+    priority: P0
+    mode: HYBRID
+    scope: cluster
+    category: security
+    applicable: "{{ pat_require_manual_evidence | bool }}"
+    na_reason: "Manual/source evidence is disabled by pat_require_manual_evidence=false."
+    command: |
+      test -s {{ pat_manual_source_secret_scan_file }}
+    success_hint: "No obvious plaintext password values found in installer service vars."
+    recommendation: "Move installer credentials to Ansible Vault or an external secret system, then rotate exposed values."
+
+  - id: PAT-B11
+    title: HPA functional scaling
+    priority: P1/P2
+    mode: PROD-SYN
+    scope: cluster
+    category: functional
+    applicable: "{{ (pat_features.hpa | bool) or ((pat_usage_hpa_count | default(0) | int) > 0) }}"
+    na_reason: "No HPA is declared in the design and no live HPA object was discovered."
+    command: |
+      kubectl get apiservice v1beta1.metrics.k8s.io
+      kubectl get hpa --all-namespaces --no-headers | awk 'NF { seen=1 } END { exit !seen }'
+    success_hint: "HPA prerequisites are present."
+    recommendation: "If HPA is required, enable metrics-server and run a bounded scale-out/scale-in PAT."
+
+  - id: PAT-B12
+    title: Log marker delivery to collector
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: observability
+    applicable: "{{ (pat_installed_services.fluentbit | bool) and (pat_enable_prod_synthetic | bool) }}"
+    na_reason: "Fluent Bit synthetic marker test is disabled or Fluent Bit is not installed."
+    command: |
+      kubectl -n fluentbit rollout status daemonset/fluent-bit-ocs --timeout={{ pat_rollout_timeout }}
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      marker="PAT_LOG_MARKER_{{ pat_run_id }}"
+      kubectl -n {{ pat_namespace }} run pat-log-marker-{{ pat_run_id | lower }} --image={{ pat_test_image }} --restart=Never --command -- sh -c "echo ${marker}"
+      kubectl -n {{ pat_namespace }} wait --for=condition=Succeeded pod/pat-log-marker-{{ pat_run_id | lower }} --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} logs pod/pat-log-marker-{{ pat_run_id | lower }} | grep -F "${marker}"
+      kubectl -n {{ pat_namespace }} delete pod/pat-log-marker-{{ pat_run_id | lower }} --ignore-not-found=true --wait=true
+    success_hint: "Synthetic log marker reached the approved backend."
+    recommendation: "Enable log marker test and verify backend query, labels and secret redaction."
+
+  - id: PAT-B13
+    title: Synthetic alert delivery
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: observability
+    applicable: "{{ (pat_features.prometheus_compatible_monitoring | bool) and (pat_enable_prod_synthetic | bool) }}"
+    na_reason: "No approved monitoring backend is declared, or synthetic alert tests are disabled."
+    command: |
+      kubectl get --raw /apis/metrics.k8s.io/v1beta1/nodes >/dev/null
+      test -s {{ pat_synthetic_alert_evidence_file }}
+    success_hint: "Synthetic alert lifecycle completed."
+    recommendation: "Define monitoring backend/receiver and add end-to-end alert assertion."
+
+  - id: PAT-B14
+    title: Stateful storage architecture applicability
+    priority: P0
+    mode: HYBRID
+    scope: cluster
+    category: storage
+    applicable: "{{ (pat_features.csi_storage | bool) or (pat_features.local_path_stateful | bool) }}"
+    na_reason: "No stateful production storage capability is declared."
+    command: |
+      kubectl get storageclass
+      if [ -n "{{ pat_usage_pvc_storage_classes | default('') }}" ]; then
+        echo "{{ pat_usage_pvc_storage_classes }}" | tr ',' '\n' | while read sc; do kubectl get storageclass "${sc}"; done
+      fi
+      if kubectl get storageclass local-path >/dev/null 2>&1; then
+        echo "local-path present: require replication/node-loss evidence for production stateful workloads"
+      fi
+    success_hint: "Stateful storage classes are visible for architecture review."
+    recommendation: "For local-path stateful data, attach replication, backup, restore and node-loss evidence; otherwise provide CSI RPO/RTO evidence."
+
+  - id: PAT-B15
+    title: Registry and image governance evidence
+    priority: P1
+    mode: HYBRID
+    scope: cluster
+    applicable: "{{ pat_features.registry_policy | bool }}"
+    na_reason: "Registry governance is not declared as available for automated PAT."
+    category: security
+    command: |
+      kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' |
+        awk '$0 ~ /:latest$/ { print; bad=1 } END { exit bad }'
+    success_hint: "No running container uses the latest tag."
+    recommendation: "Pin images by digest/immutable tag and attach registry scan/signature/RBAC evidence."
+
+  - id: PAT-C01
+    title: API authentication and RBAC baseline
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    command: |
+      kubectl auth can-i get secrets --as=system:anonymous -A | grep -Fx no
+      kubectl auth can-i create pods --as=system:anonymous -A | grep -Fx no
+    success_hint: "Anonymous identity cannot access protected resources."
+    recommendation: "Restrict anonymous access, remove broad system:masters bindings and review wildcard/escalation RBAC."
+
+  - id: PAT-C02
+    title: Pod policy admission is present
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    applicable: "{{ pat_features.kyverno_or_psa | bool }}"
+    na_reason: "No PSA/Kyverno/Gatekeeper policy engine is declared in pat_features."
+    command: |
+      if kubectl get ns -o jsonpath='{range .items[*]}{.metadata.labels.pod-security\.kubernetes\.io/enforce}{"\n"}{end}' | grep -q .; then
+        exit 0
+      fi
+      kubectl -n kyverno rollout status deployment/kyverno-admission-controller --timeout={{ pat_rollout_timeout }}
+      {% for policy in pat_expected_kyverno_policies %}
+      kubectl get clusterpolicy {{ policy }}
+      {% endfor %}
+    success_hint: "Pod policy enforcement surface is present."
+    recommendation: "Enable PSA baseline/restricted or Kyverno/Gatekeeper policies and add negative admission tests."
+
+  - id: PAT-C03
+    title: Non-root workload security context
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    command: |
+      kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{range .spec.containers[*]}{.securityContext.runAsNonRoot}{" "}{end}{"\n"}{end}' |
+        awk '$1 !~ /^(kube-system|kyverno|local-path-storage|fluentbit)\\// && $0 !~ /true/ { print; bad=1 } END { exit bad }'
+    success_hint: "Non-system pods declare runAsNonRoot."
+    recommendation: "Set runAsNonRoot/runAsUser and document exceptions for images that require root."
+
+  - id: PAT-C04
+    title: Read-only root filesystem baseline
+    priority: P1
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    command: |
+      kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{range .spec.containers[*]}{.securityContext.readOnlyRootFilesystem}{" "}{end}{"\n"}{end}' |
+        awk '$1 !~ /^(kube-system|kyverno|local-path-storage|fluentbit)\\// && $0 !~ /true/ { print; bad=1 } END { exit bad }'
+    success_hint: "Non-system pods declare readOnlyRootFilesystem."
+    recommendation: "Mount explicit writable volumes and set readOnlyRootFilesystem=true, or document an approved exception."
+
+  - id: PAT-C05
+    title: Installer workload security posture scan
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    command: |
+      test -z "$(
+        kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{range .spec.containers[*]}{.securityContext.privileged}{" "}{.securityContext.allowPrivilegeEscalation}{" "}{end}{"\n"}{end}' |
+        awk '$0 ~ /true/ && $1 !~ /^kube-system\\// { print }'
+      )"
+    success_hint: "No non-kube-system pod reports privileged or allowPrivilegeEscalation=true."
+    recommendation: "Remove privileged/allowPrivilegeEscalation from workloads or document a time-bound allowlist."
+
+  - id: PAT-C06
+    title: Kubelet read-only port is disabled
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: security
+    command: |
+      if ss -ltn 2>/dev/null | awk '{ print $4 }' | grep -Eq '(^|:)10255$'; then
+        echo "kubelet read-only port 10255 is listening"
+        exit 1
+      fi
+    success_hint: "Kubelet read-only port is not listening."
+    recommendation: "Set kubelet readOnlyPort to 0 and restrict kubelet 10250 to approved sources."
+
+  - id: PAT-C07
+    title: WAF or API Gateway evidence
+    priority: P1/P2
+    mode: HYBRID
+    scope: cluster
+    category: traffic
+    applicable: "{{ pat_features.waf_or_api_gateway | bool }}"
+    na_reason: "WAF/API Gateway is not in the current installer profile."
+    command: |
+      test -s {{ pat_manual_route_waf_evidence_file }}
+    success_hint: "WAF/API Gateway evidence was attached."
+    recommendation: "If north-south public traffic exists, define WAF/Gateway endpoints and run safe negative request tests."
+
+  - id: PAT-C08
+    title: Secret encryption at rest configuration
+    priority: P0
+    mode: PROD-RO
+    scope: master
+    category: security
+    applicable: "{{ pat_features.secret_encryption_at_rest | bool }}"
+    na_reason: "Secret encryption at rest is not declared as enabled in pat_features."
+    command: |
+      grep -q -- '--encryption-provider-config=' /etc/kubernetes/manifests/kube-apiserver.yaml
+    success_hint: "API server references an EncryptionConfiguration."
+    recommendation: "Configure Secret encryption at rest/KMS and run the canary Secret verification case."
+
+  - id: PAT-C09
+    title: Installer deprecated security settings
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    command: |
+      minor="$(
+        kubectl version -o json |
+        sed -n 's/.*"minor": *"\([0-9][0-9]*\).*/\1/p' |
+        tail -1
+      )"
+      test -n "${minor}"
+      test "${minor}" -ge {{ pat_min_supported_k8s_minor }}
+      kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' |
+        while read node; do
+          kubectl get --raw="/api/v1/nodes/${node}/proxy/metrics" >/dev/null
+        done
+    success_hint: "Live cluster version and kubelet proxy path meet the configured PAT baseline."
+    recommendation: "Upgrade Kubernetes support baseline and verify kubelet/API bypass controls, including read-only port 10255."
+
+  - id: PAT-C10
+    title: Audit event marker test
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: audit
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic audit marker test is disabled by pat_enable_prod_synthetic."
+    command: |
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} create configmap audit-marker-{{ pat_run_id | lower }} --from-literal=run={{ pat_run_id }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} delete configmap audit-marker-{{ pat_run_id | lower }} --ignore-not-found=true
+    success_hint: "Audit marker API activity was generated."
+    recommendation: "Query the centralized audit backend for user, verb, resource, namespace, response code and request ID."
+
+  - id: PAT-D01
+    title: Deployment pod self-healing
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: resilience
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic pod self-healing test is disabled."
+    command: |
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} delete deploy pat-heal --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} create deployment pat-heal --image={{ pat_test_image }} --replicas=2 -- sh -c 'sleep 3600'
+      kubectl -n {{ pat_namespace }} rollout status deployment/pat-heal --timeout={{ pat_rollout_timeout }}
+      pod="$(kubectl -n {{ pat_namespace }} get pod -l app=pat-heal --sort-by=.metadata.name -o jsonpath='{.items[0].metadata.name}')"
+      kubectl -n {{ pat_namespace }} delete pod "${pod}" --wait=true
+      kubectl -n {{ pat_namespace }} rollout status deployment/pat-heal --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} get deploy pat-heal -o jsonpath='{.status.readyReplicas}' | grep -Fx 2
+      kubectl -n {{ pat_namespace }} delete deploy pat-heal --ignore-not-found=true --wait=true
+    success_hint: "Deployment self-healing test completed."
+    recommendation: "Enable controlled synthetic resilience test with cleanup and request success guardrail."
+
+  - id: PAT-D03
+    title: Worker outage resilience
+    priority: P0
+    mode: AUTO-CHAOS
+    scope: cluster
+    category: resilience
+    applicable: "{{ pat_enable_chaos | bool }}"
+    na_reason: "Chaos PAT is disabled by pat_enable_chaos."
+    command: |
+      test -n "{{ pat_chaos_target_worker_node }}"
+      kubectl get node {{ pat_chaos_target_worker_node }}
+      kubectl cordon {{ pat_chaos_target_worker_node }}
+      kubectl get --raw=/readyz | grep -Fx ok
+      kubectl uncordon {{ pat_chaos_target_worker_node }}
+      kubectl wait --for=condition=Ready node/{{ pat_chaos_target_worker_node }} --timeout={{ pat_rollout_timeout }}
+    success_hint: "Worker outage resilience test completed."
+    recommendation: "Run only with target node, rollback and health gates."
+
+  - id: PAT-D04
+    title: Kubelet and containerd restart resilience
+    priority: P1
+    mode: AUTO-CHAOS
+    scope: cluster
+    category: resilience
+    applicable: "{{ pat_enable_chaos | bool }}"
+    na_reason: "Chaos PAT is disabled by pat_enable_chaos."
+    command: |
+      test -n "{{ pat_chaos_target_worker_node }}"
+      kubectl get node {{ pat_chaos_target_worker_node }}
+      test -s {{ pat_runtime_restart_evidence_file }}
+    success_hint: "Runtime restart resilience test completed."
+    recommendation: "Run one worker at a time with workload and node health gates."
+
+  - id: PAT-D05
+    title: CNI daemon self-healing
+    priority: P0
+    mode: AUTO-CHAOS
+    scope: cluster
+    category: resilience
+    applicable: "{{ pat_enable_chaos | bool }}"
+    na_reason: "Chaos PAT is disabled by pat_enable_chaos."
+    command: |
+      kubectl -n kube-system rollout status daemonset/calico-node --timeout={{ pat_rollout_timeout }}
+      {% if pat_chaos_target_cni_node | default('') | length > 0 %}
+      pod="$(kubectl -n kube-system get pod -l k8s-app=calico-node --field-selector spec.nodeName={{ pat_chaos_target_cni_node }} -o jsonpath='{.items[0].metadata.name}')"
+      {% else %}
+      pod="$(kubectl -n kube-system get pod -l k8s-app=calico-node --sort-by=.metadata.name -o jsonpath='{.items[0].metadata.name}')"
+      {% endif %}
+      test -n "${pod}"
+      kubectl -n kube-system delete pod "${pod}" --wait=true
+      kubectl -n kube-system rollout status daemonset/calico-node --timeout={{ pat_rollout_timeout }}
+    success_hint: "CNI daemon self-healing test completed."
+    recommendation: "Run CNI pod delete test only with connectivity probes and cleanup."
+
+  - id: PAT-D06
+    title: CoreDNS replica self-healing
+    priority: P0
+    mode: AUTO-CHAOS
+    scope: cluster
+    category: resilience
+    applicable: "{{ pat_enable_chaos | bool }}"
+    na_reason: "Chaos PAT is disabled by pat_enable_chaos."
+    command: |
+      kubectl -n kube-system rollout status deployment/coredns --timeout={{ pat_rollout_timeout }}
+      pod="$(kubectl -n kube-system get pod -l k8s-app=kube-dns --sort-by=.metadata.name -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || kubectl -n kube-system get pod -l k8s-app=coredns --sort-by=.metadata.name -o jsonpath='{.items[0].metadata.name}')"
+      test -n "${pod}"
+      kubectl -n kube-system delete pod "${pod}" --wait=true
+      kubectl -n kube-system rollout status deployment/coredns --timeout={{ pat_rollout_timeout }}
+    success_hint: "CoreDNS self-healing test completed."
+    recommendation: "Run with continuous DNS probe and CoreDNS rollout guard."
+
+  - id: PAT-D07
+    title: Non-VIP control-plane component failure
+    priority: P0
+    mode: AUTO-CHAOS
+    scope: master
+    category: resilience
+    applicable: "{{ pat_enable_chaos | bool }}"
+    na_reason: "Chaos PAT is disabled by pat_enable_chaos."
+    command: |
+      test -n "{{ pat_chaos_target_master_node }}"
+      test -s {{ pat_control_plane_failure_evidence_file }}
+    success_hint: "Control-plane single-component failure test completed."
+    recommendation: "Run only with VIP holder detection, API health gates and rollback."
+
+  - id: PAT-D08
+    title: VIP failover resilience
+    priority: P0
+    mode: AUTO-CHAOS
+    scope: master
+    category: resilience
+    applicable: "{{ pat_enable_chaos | bool }}"
+    na_reason: "Chaos PAT is disabled by pat_enable_chaos."
+    command: |
+      test -n "{{ pat_chaos_target_master_node }}"
+      test -s {{ pat_vip_failover_evidence_file }}
+    success_hint: "VIP failover test completed."
+    recommendation: "Run with current VIP holder detection and API latency guard."
+
+  - id: PAT-D09
+    title: Etcd single-member failure
+    priority: P0
+    mode: AUTO-CHAOS
+    scope: master
+    category: resilience
+    applicable: "{{ pat_enable_chaos | bool }}"
+    na_reason: "Chaos PAT is disabled by pat_enable_chaos."
+    command: |
+      test -n "{{ pat_chaos_target_etcd_member_host }}"
+      test {{ pat_master_hosts | length }} -ge 3
+      test -s {{ pat_etcd_member_failure_evidence_file }}
+    success_hint: "Etcd single-member failure test completed."
+    recommendation: "Run one etcd member at a time with quorum, leader and alarm guards."
+
+  - id: PAT-D10
+    title: Etcd quorum guard
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: resilience
+    command: |
+      test {{ pat_master_hosts | length }} -ge 3
+      test $(( {{ pat_master_hosts | length }} % 2 )) -eq 1
+    success_hint: "Etcd/control-plane inventory has odd HA member count."
+    recommendation: "Do not run etcd chaos when quorum is degraded; keep 3 or 5 members."
+
+  - id: PAT-D11
+    title: Stateful volume node-loss behavior
+    priority: P0
+    mode: AUTO-CHAOS
+    scope: cluster
+    category: storage
+    applicable: "{{ (pat_features.csi_storage | bool) and (pat_enable_chaos | bool) }}"
+    na_reason: "CSI storage or chaos PAT is not enabled; local-path requires separate manual exception evidence."
+    command: |
+      test -s {{ pat_stateful_volume_failure_evidence_file }}
+    success_hint: "Stateful volume node-loss test completed."
+    recommendation: "For local-path, attach application replication and restore evidence; for CSI, run detach/attach checksum test."
+
+  - id: PAT-D13
+    title: Certificate renewal rehearsal
+    priority: P1
+    mode: AUTO-CHAOS(lab)
+    scope: cluster
+    category: disaster-recovery
+    applicable: "{{ pat_enable_lab_dr | bool }}"
+    na_reason: "Lab DR PAT is disabled by pat_enable_lab_dr."
+    command: |
+      test -s {{ pat_lab_cert_renew_evidence_file }}
+    success_hint: "Certificate renewal rehearsal completed."
+    recommendation: "Run kubeadm cert renewal in lab and attach API/kubelet auth evidence."
+
+  - id: PAT-D14
+    title: Join and detach runbook rehearsal
+    priority: P1
+    mode: AUTO-CHAOS(lab)
+    scope: cluster
+    category: disaster-recovery
+    applicable: "{{ pat_enable_lab_dr | bool }}"
+    na_reason: "Lab DR PAT is disabled by pat_enable_lab_dr."
+    command: |
+      test -s {{ pat_lab_join_detach_evidence_file }}
+    success_hint: "Join/detach rehearsal completed."
+    recommendation: "Exercise kubeadm join/detach scripts with valid and invalid inputs in lab."
+
+  - id: PAT-D15
+    title: Upgrade and rollback rehearsal
+    priority: P1
+    mode: AUTO-CHAOS(lab)
+    scope: cluster
+    category: lifecycle
+    applicable: "{{ pat_enable_lab_dr | bool }}"
+    na_reason: "Lab DR PAT is disabled by pat_enable_lab_dr."
+    command: |
+      test -s {{ pat_lab_upgrade_evidence_file }}
+    success_hint: "Upgrade and rollback rehearsal completed."
+    recommendation: "Run supported minor/patch upgrade rehearsal before production upgrade."
+
+  - id: PAT-E01
+    title: API latency and availability soak
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: performance
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic performance tests are disabled."
+    command: |
+      for i in $(seq 1 20); do kubectl get --raw=/readyz >/dev/null; done
+    success_hint: "Low-volume API readiness loop completed."
+    recommendation: "Run 15-30 minute bounded API read/write soak and compare p95/p99 to SLO."
+
+  - id: PAT-E02
+    title: DNS latency and success soak
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: performance
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic DNS performance tests are disabled."
+    command: |
+      kubectl -n kube-system rollout status deployment/coredns --timeout={{ pat_rollout_timeout }}
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} run pat-dns-loop-{{ pat_run_id | lower }} --image={{ pat_test_image }} --restart=Never --command -- sh -c 'i=0; while [ "$i" -lt 20 ]; do nslookup kubernetes.default.svc.cluster.local >/dev/null || exit 1; i=$((i+1)); done'
+      kubectl -n {{ pat_namespace }} wait --for=condition=Succeeded pod/pat-dns-loop-{{ pat_run_id | lower }} --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} delete pod/pat-dns-loop-{{ pat_run_id | lower }} --ignore-not-found=true --wait=true
+    success_hint: "DNS performance probe completed."
+    recommendation: "Enable bounded DNS query test from multiple nodes and verify success/p95 latency."
+
+  - id: PAT-E03
+    title: Network throughput and MTU baseline
+    priority: P1
+    mode: PROD-SYN
+    scope: cluster
+    category: performance
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic network performance tests are disabled."
+    command: |
+      kubectl -n kube-system rollout status daemonset/calico-node --timeout={{ pat_rollout_timeout }}
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} delete pod pat-mtu-target pat-mtu-client --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} run pat-mtu-target --image={{ pat_test_image }} --restart=Never --command -- sh -c 'sleep 3600'
+      kubectl -n {{ pat_namespace }} wait --for=condition=Ready pod/pat-mtu-target --timeout={{ pat_rollout_timeout }}
+      target_ip="$(kubectl -n {{ pat_namespace }} get pod pat-mtu-target -o jsonpath='{.status.podIP}')"
+      kubectl -n {{ pat_namespace }} run pat-mtu-client --image={{ pat_test_image }} --restart=Never --command -- sh -c "ping -c 3 -s 1400 ${target_ip}"
+      kubectl -n {{ pat_namespace }} wait --for=condition=Succeeded pod/pat-mtu-client --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} delete pod pat-mtu-target pat-mtu-client --ignore-not-found=true --wait=true
+    success_hint: "Network performance probe completed."
+    recommendation: "Run bounded iperf/MTU test in lab or approved production window."
+
+  - id: PAT-E04
+    title: Scheduler, IP pool and quota burst
+    priority: P1
+    mode: PROD-SYN
+    scope: cluster
+    category: performance
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic burst tests are disabled."
+    command: |
+      kubectl get nodes --no-headers | awk '$2 == "Ready" { ready++ } END { exit !(ready >= 1) }'
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} delete job pat-burst --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} create job pat-burst --image={{ pat_test_image }} -- sh -c 'echo ok'
+      kubectl -n {{ pat_namespace }} wait --for=condition=complete job/pat-burst --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} delete job pat-burst --ignore-not-found=true --wait=true
+    success_hint: "Scheduler/IP pool burst test completed."
+    recommendation: "Enable bounded burst with ResourceQuota and cleanup, then verify no Pending/IP exhaustion."
+
+  - id: PAT-E05
+    title: Long soak stability
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: performance
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Long soak is disabled by pat_enable_prod_synthetic."
+    command: |
+      i=0
+      while [ "${i}" -lt {{ pat_soak_iterations | int }} ]; do
+        kubectl get --raw=/readyz >/dev/null
+        kubectl -n kube-system rollout status deployment/coredns --timeout={{ pat_rollout_timeout }} >/dev/null
+        i=$((i+1))
+        sleep 1
+      done
+    success_hint: "Long soak completed."
+    recommendation: "Schedule {{ pat_soak_minutes }} minute soak and verify no restart/leak/disk/alert regression."
+
+  - id: PAT-F01
+    title: As-built topology evidence
+    priority: P0
+    mode: MANUAL
+    scope: cluster
+    category: documentation
+    applicable: "{{ pat_require_manual_evidence | bool }}"
+    na_reason: "Manual topology evidence check is disabled by pat_require_manual_evidence=false."
+    command: |
+      test -s {{ pat_manual_topology_evidence_file }}
+    success_hint: "As-built topology evidence was attached."
+    recommendation: "Attach node/rack/zone/storage/network/VIP topology and reconcile with inventory."
+
+  - id: PAT-F02
+    title: Operations runbook evidence
+    priority: P1
+    mode: MANUAL
+    scope: cluster
+    category: documentation
+    applicable: "{{ pat_require_manual_evidence | bool }}"
+    na_reason: "Manual runbook evidence check is disabled by pat_require_manual_evidence=false."
+    command: |
+      test -s {{ pat_manual_runbook_evidence_file }}
+    success_hint: "Operations runbook evidence was attached."
+    recommendation: "Attach join/detach/backup/restore/cert/upgrade/incident runbooks with rehearsal evidence."
+
+  - id: PAT-F03
+    title: Firewall and security group evidence
+    priority: P0
+    mode: HYBRID
+    scope: cluster
+    category: security
+    applicable: "{{ pat_require_manual_evidence | bool }}"
+    na_reason: "Manual firewall/security-group evidence check is disabled by pat_require_manual_evidence=false."
+    command: |
+      test -s {{ pat_manual_firewall_evidence_file }}
+    success_hint: "Firewall evidence was attached."
+    recommendation: "Attach approved source/destination/port matrix and prove no public access to management ports."
+
+  - id: PAT-F04
+    title: External route and WAF evidence
+    priority: P1/P2
+    mode: HYBRID
+    scope: cluster
+    category: traffic
+    applicable: "{{ pat_features.waf_or_api_gateway | bool }}"
+    na_reason: "External route/WAF is not in the current installer profile."
+    command: |
+      test -s {{ pat_manual_route_waf_evidence_file }}
+    success_hint: "External route/WAF evidence was attached."
+    recommendation: "If public route exists, attach TLS, route, WAF policy and bypass-prevention logs."
+
+  - id: PAT-F05
+    title: Registry policy evidence
+    priority: P1
+    mode: HYBRID
+    scope: cluster
+    category: security
+    applicable: "{{ pat_features.registry_policy | bool }}"
+    na_reason: "Registry policy is not declared as available for automated evidence."
+    command: |
+      test -s {{ pat_manual_registry_evidence_file }}
+    success_hint: "Registry policy evidence was attached."
+    recommendation: "Attach immutable tag/digest, scan, retention, RBAC and pipeline gate evidence."
+
+  - id: PAT-P01
+    title: Kubernetes lifecycle and removed API readiness
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: lifecycle
+    command: |
+      minor="$(
+        kubectl version -o json |
+        sed -n 's/.*"minor": *"\([0-9][0-9]*\).*/\1/p' |
+        tail -1
+      )"
+      test -n "${minor}"
+      test "${minor}" -ge {{ pat_min_supported_k8s_minor }}
+      kubectl api-resources >/dev/null
+    success_hint: "Cluster minor version is supported by the configured PAT baseline."
+    recommendation: "Upgrade before EOL and scan manifests/live objects for removed APIs before version changes."
+
+  - id: PAT-P02
+    title: Configuration drift across nodes
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: lifecycle
+    command: |
+      test -s /var/lib/kubelet/config.yaml
+      test -s /etc/containerd/config.toml
+      sha256sum /var/lib/kubelet/config.yaml /etc/containerd/config.toml >/tmp/k8s-pat-config-hash.txt
+    success_hint: "Node configuration files exist and were hashable for drift comparison."
+    recommendation: "Aggregate hashes across nodes; any role-level drift needs a change record or remediation."
+
+  - id: PAT-P03
+    title: CRI, cgroup and kernel baseline
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: runtime
+    command: |
+      crictl info >/dev/null
+      grep -q 'SystemdCgroup = true' /etc/containerd/config.toml
+      sysctl net.ipv4.ip_forward | grep -q '= 1'
+    success_hint: "CRI responds, containerd uses systemd cgroup and IPv4 forwarding is enabled."
+    recommendation: "Fix CRI/cgroup-driver/sysctl mismatch before production PAT."
+
+  - id: PAT-P04
+    title: Swap policy
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: runtime
+    command: |
+      if swapon --show --noheadings | grep -q .; then
+        echo "swap is enabled; LimitedSwap requires explicit approved policy"
+        exit 1
+      fi
+    success_hint: "No swap is active on this node."
+    recommendation: "Keep NoSwap for this installer profile or document LimitedSwap policy with benchmark evidence."
+
+  - id: PAT-P05
+    title: Graceful node shutdown configuration
+    priority: P1
+    mode: PROD-RO
+    scope: host
+    category: runtime
+    command: |
+      if grep -Eq '^shutdownGracePeriod: *0s' /var/lib/kubelet/config.yaml; then
+        echo "shutdownGracePeriod is 0s"
+        exit 1
+      fi
+    success_hint: "Kubelet graceful shutdown is configured."
+    recommendation: "Set shutdownGracePeriod/shutdownGracePeriodCriticalPods or attach tested shutdown runbook exception."
+
+  - id: PAT-P06
+    title: API Priority and Fairness
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: control-plane
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic APF burst test is disabled."
+    command: |
+      kubectl get flowschemas,prioritylevelconfigurations >/dev/null
+      for i in $(seq 1 50); do kubectl get --raw=/readyz >/dev/null; done
+    success_hint: "APF objects are present and bounded burst test completed."
+    recommendation: "Run low-QPS PAT identity burst while monitoring system request latency and 5xx/429."
+
+  - id: PAT-P07
+    title: Admission webhook availability and latency
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    applicable: "{{ pat_features.kyverno_or_psa | bool }}"
+    na_reason: "No admission policy engine is declared."
+    command: |
+      kubectl get validatingwebhookconfigurations,mutatingwebhookconfigurations >/dev/null
+      kubectl -n kyverno rollout status deployment/kyverno-admission-controller --timeout={{ pat_rollout_timeout }} || true
+    success_hint: "Admission webhook objects are queryable and Kyverno admission is healthy when installed."
+    recommendation: "Review webhook timeout, failurePolicy, namespaceSelector, replicas, spread and PDB."
+
+  - id: PAT-P08
+    title: Current Pod Security enforcement
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: security
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic pod-security negative tests are disabled."
+    command: |
+      kubectl get clusterpolicy enforce-run-as-nonroot >/dev/null
+      kubectl get clusterpolicy require-pod-resources >/dev/null
+    success_hint: "Pod Security/Kyverno policy objects are present."
+    recommendation: "Enable negative admission tests for privileged/root/hostPath manifests in PAT namespace."
+
+  - id: PAT-P09
+    title: RBAC escalation review
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    command: |
+      kubectl get clusterrolebinding -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.roleRef.name}{" "}{range .subjects[*]}{.kind}{":"}{.namespace}{":"}{.name}{","}{end}{"\n"}{end}' |
+        awk '$2 == "cluster-admin" && $0 !~ /{{ pat_allowed_cluster_admin_subject_regex }}/ { print; bad=1 } END { exit bad }'
+      kubectl get clusterrole -o yaml | grep -E 'resources:.*nodes/proxy|verbs:.*impersonate|verbs:.*escalate' && exit 1 || true
+    success_hint: "No obvious system:masters/wildcard/escalation RBAC pattern was detected."
+    recommendation: "Review cluster-admin, wildcard, bind/escalate, impersonate and nodes/proxy grants with an allowlist."
+
+  - id: PAT-P10
+    title: ServiceAccount token hygiene
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    command: |
+      kubectl get secrets --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"/"}{.metadata.name}{" "}{.type}{"\n"}{end}' |
+        awk '$2 == "kubernetes.io/service-account-token" { print; bad=1 } END { exit bad }'
+    success_hint: "No legacy long-lived ServiceAccount token Secret was detected."
+    recommendation: "Use projected bound tokens and automountServiceAccountToken=false for pods that do not call the API."
+
+  - id: PAT-P11
+    title: Secret encryption at rest canary
+    priority: P0
+    mode: PROD-SYN
+    scope: master
+    category: security
+    applicable: "{{ (pat_features.secret_encryption_at_rest | bool) and (pat_enable_prod_synthetic | bool) }}"
+    na_reason: "Secret encryption or production synthetic canary is disabled."
+    command: |
+      grep -q -- '--encryption-provider-config=' /etc/kubernetes/manifests/kube-apiserver.yaml
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} create secret generic pat-encryption-canary-{{ pat_run_id | lower }} --from-literal=value={{ pat_run_id }}
+      kubectl -n {{ pat_namespace }} get secret pat-encryption-canary-{{ pat_run_id | lower }} -o jsonpath='{.data.value}' | grep -q .
+      kubectl -n {{ pat_namespace }} delete secret pat-encryption-canary-{{ pat_run_id | lower }} --ignore-not-found=true
+    success_hint: "Secret encryption canary completed."
+    recommendation: "Configure encryption provider/KMS and run canary read from etcd with redacted evidence."
+
+  - id: PAT-P12
+    title: API bypass surfaces
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: security
+    command: |
+      test ! -w /etc/kubernetes/manifests || test "$(stat -c %U /etc/kubernetes/manifests)" = "root"
+      test ! -w /run/containerd/containerd.sock || test "$(stat -c %U /run/containerd/containerd.sock)" = "root"
+      if ss -ltn 2>/dev/null | awk '{ print $4 }' | grep -Eq '(^|:)10255$'; then
+        echo "kubelet read-only port 10255 is listening"
+        exit 1
+      fi
+    success_hint: "Common host-level API bypass surfaces are constrained."
+    recommendation: "Disable kubelet read-only port and restrict write access to runtime/static manifest paths."
+
+  - id: PAT-P13
+    title: Full network isolation
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: security
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic network isolation tests are disabled."
+    command: |
+      kubectl get networkpolicy --all-namespaces >/dev/null
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      cat <<'EOF' | kubectl apply -f -
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: pat-full-default-deny
+        namespace: {{ pat_namespace }}
+      spec:
+        podSelector: {}
+        policyTypes: ["Ingress", "Egress"]
+      EOF
+      kubectl -n {{ pat_namespace }} get networkpolicy pat-full-default-deny
+      kubectl -n {{ pat_namespace }} delete networkpolicy pat-full-default-deny --ignore-not-found=true
+    success_hint: "Full network isolation synthetic test completed."
+    recommendation: "Run default-deny ingress/egress with DNS exception and cross-namespace negative tests."
+
+  - id: PAT-P14
+    title: Placement and voluntary disruption
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: resilience
+    command: |
+      kubectl get nodes --show-labels | grep -q 'kubernetes.io/hostname'
+      if [ -n "{{ pat_usage_app_namespaces | default('') }}" ]; then
+        kubectl get pdb --all-namespaces --no-headers | awk 'NF { seen=1 } END { exit !seen }'
+      else
+        kubectl get pdb --all-namespaces >/dev/null
+      fi
+    success_hint: "Topology labels and PDB API are available for placement review."
+    recommendation: "Add topology spread/anti-affinity and PDB for critical workloads; validate with Eviction API synthetic test."
+
+  - id: PAT-P15
+    title: Rolling update and rollback
+    priority: P0
+    mode: PROD-SYN
+    scope: cluster
+    category: resilience
+    applicable: "{{ pat_enable_prod_synthetic | bool }}"
+    na_reason: "Production synthetic rolling update test is disabled."
+    command: |
+      kubectl create namespace {{ pat_namespace }} --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n {{ pat_namespace }} delete deploy pat-rollout --ignore-not-found=true --wait=true
+      kubectl -n {{ pat_namespace }} create deployment pat-rollout --image={{ pat_test_image }} --replicas=2 -- sh -c 'sleep 3600'
+      kubectl -n {{ pat_namespace }} rollout status deployment/pat-rollout --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} set env deployment/pat-rollout PAT_RUN_ID={{ pat_run_id }}
+      kubectl -n {{ pat_namespace }} rollout status deployment/pat-rollout --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} rollout undo deployment/pat-rollout
+      kubectl -n {{ pat_namespace }} rollout status deployment/pat-rollout --timeout={{ pat_rollout_timeout }}
+      kubectl -n {{ pat_namespace }} delete deploy pat-rollout --ignore-not-found=true --wait=true
+    success_hint: "Rolling update and rollback synthetic test completed."
+    recommendation: "Run bounded Deployment update/rollback while probing Service endpoint availability."
+
+  - id: PAT-P16
+    title: CSI production storage
+    priority: P0/P1
+    mode: PROD-SYN
+    scope: cluster
+    category: storage
+    applicable: "{{ (pat_features.csi_storage | bool) and (pat_enable_prod_synthetic | bool) }}"
+    na_reason: "CSI storage is not declared, or production synthetic tests are disabled."
+    command: |
+      kubectl get storageclass
+      kubectl get csidriver
+    success_hint: "CSI objects are visible."
+    recommendation: "If stateful production uses storage, define CSI/local-path applicability and run PVC checksum/failure-domain PAT."
+
+  - id: PAT-P17
+    title: Software supply chain baseline
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: security
+    command: |
+      kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' |
+        awk '$0 ~ /:latest$/ { print; bad=1 } END { exit bad }'
+    success_hint: "No running container image uses the latest tag."
+    recommendation: "Pin images with immutable tags/digests and add scanner/signature admission evidence."
+
+  - id: PAT-P20
+    title: Installer Fluent Bit log pipeline components
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: observability
+    applicable: "{{ pat_installed_services.fluentbit | bool }}"
+    na_reason: "Fluent Bit is disabled in the installer profile."
+    command: |
+      kubectl get namespace fluentbit
+      kubectl -n fluentbit rollout status daemonset/fluent-bit-ocs --timeout={{ pat_rollout_timeout }}
+      kubectl -n fluentbit get configmap fluent-bit-ocs-config
+      kubectl -n fluentbit get service fluent-bit-service
+    success_hint: "Fluent Bit namespace, DaemonSet, ConfigMap and Service are present."
+    recommendation: "Repair Fluent Bit rollout/config and add marker-to-backend synthetic log delivery test."
+
+  - id: PAT-P18
+    title: North-south traffic controls
+    priority: P1/P2
+    mode: PROD-SYN
+    scope: cluster
+    category: traffic
+    applicable: "{{ (pat_features.ingress_or_gateway | bool) or ((pat_usage_ingress_count | default(0) | int) > 0) or ((pat_usage_gateway_count | default(0) | int) > 0) }}"
+    na_reason: "No Ingress/Gateway is declared and no live north-south route object was discovered."
+    command: |
+      if kubectl get ingress --all-namespaces --no-headers 2>/dev/null | grep -q .; then
+        exit 0
+      fi
+      if kubectl get gateway --all-namespaces --no-headers 2>/dev/null | grep -q .; then
+        exit 0
+      fi
+      echo "No Ingress or Gateway object found"
+      exit 1
+    success_hint: "North-south route objects are queryable."
+    recommendation: "If public/internal routes are required, enable route checks for TLS, hostname, policy and bypass prevention."
+
+  - id: PAT-P19
+    title: Node pressure safety
+    priority: P0
+    mode: PROD-RO
+    scope: host
+    category: capacity
+    command: |
+      grep -q '^kubeReserved:' /var/lib/kubelet/config.yaml
+      grep -q '^systemReserved:' /var/lib/kubelet/config.yaml
+      grep -q '^evictionHard:' /var/lib/kubelet/config.yaml
+    success_hint: "Kubelet reserved resources and hard eviction thresholds are configured."
+    recommendation: "Set kube/system reserved, eviction thresholds, ephemeral-storage limits and quota guardrails."
+
+  - id: PAT-P21
+    title: Backup recoverability evidence
+    priority: P0
+    mode: HYBRID
+    scope: cluster
+    category: backup
+    command: |
+      kubectl -n kube-system get cronjob etcd-backup-rotate
+      test -s {{ pat_lab_restore_evidence_file }}
+    success_hint: "Etcd backup CronJob exists."
+    recommendation: "Attach latest snapshot checksum/off-cluster evidence and a recent lab restore report with RPO/RTO."
+
+  - id: PAT-P22
+    title: Observability backend applicability
+    priority: P0
+    mode: PROD-RO
+    scope: cluster
+    category: observability
+    applicable: "{{ pat_features.prometheus_compatible_monitoring | bool }}"
+    na_reason: "No Prometheus-compatible monitoring backend is declared in pat_features."
+    command: |
+      kubectl get servicemonitor,podmonitor --all-namespaces 2>/dev/null | grep -q .
+    success_hint: "Monitoring CRDs/objects are present."
+    recommendation: "Define the approved observability backend and add synthetic alert delivery checks."
+
+  - id: PAT-D02
+    title: Worker drain resilience
+    priority: P0
+    mode: AUTO-CHAOS
+    scope: cluster
+    category: resilience
+    applicable: "{{ pat_enable_chaos | bool }}"
+    na_reason: "Chaos PAT is disabled by pat_enable_chaos."
+    command: |
+      test -n "{{ pat_chaos_target_worker_node }}"
+      kubectl get --raw=/readyz | grep -Fx ok
+      kubectl get node {{ pat_chaos_target_worker_node }}
+      kubectl cordon {{ pat_chaos_target_worker_node }}
+      kubectl drain {{ pat_chaos_target_worker_node }} --ignore-daemonsets --delete-emptydir-data --timeout={{ pat_rollout_timeout }}
+      kubectl get --raw=/readyz | grep -Fx ok
+      kubectl uncordon {{ pat_chaos_target_worker_node }}
+      kubectl wait --for=condition=Ready node/{{ pat_chaos_target_worker_node }} --timeout={{ pat_rollout_timeout }}
+    success_hint: "Worker drain resilience was exercised."
+    recommendation: "Run this case only after defining target node, PDB guard, health gate and rollback."
+
+  - id: PAT-D12
+    title: Etcd restore rehearsal in lab
+    priority: P0
+    mode: AUTO-CHAOS(lab)
+    scope: cluster
+    category: disaster-recovery
+    applicable: "{{ pat_enable_lab_dr | bool }}"
+    na_reason: "Lab DR PAT is disabled by pat_enable_lab_dr."
+    command: |
+      test -s {{ pat_lab_restore_evidence_file }}
+    success_hint: "Etcd restore rehearsal evidence is available."
+    recommendation: "Run restore in an isolated lab and attach object/checksum/RPO/RTO evidence."

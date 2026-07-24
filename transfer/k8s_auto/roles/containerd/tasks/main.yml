@@ -1,0 +1,45 @@
+---
+- name: Create containerd configuration directory
+  file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+  when: "'containerd' in k8s_install_services"
+
+- name: Render containerd CRI configuration
+  tags: ["dryrun"]
+  template:
+    src: config.toml.j2
+    dest: /etc/containerd/config.toml
+  when: "'containerd' in k8s_install_services"
+
+- name: Render containerd installation bootstrap script
+  tags: ["dryrun"]
+  template:
+    src: containerd-bootstrap.sh.j2
+    dest: "{{ __bootstrap_dir }}/kube-containerd-bootstrap.sh"
+    mode: '0755'
+  when: "'containerd' in k8s_install_services"
+
+- name: Run containerd installation bootstrap script with failure log tail
+  block:
+    - name: Run containerd installation bootstrap script
+      shell: |
+        set -Eeuo pipefail
+        bash {{ __bootstrap_dir }}/kube-containerd-bootstrap.sh 2>&1 | tee {{ __bootstrap_dir }}/logs/containerd-bootstrap.{{ __session_time }}.log
+      args:
+        executable: /bin/bash
+  rescue:
+    - name: Read containerd bootstrap log tail after failure
+      shell: tail -n 120 {{ __bootstrap_dir }}/logs/containerd-bootstrap.{{ __session_time }}.log
+      register: __containerd_bootstrap_log_tail
+      failed_when: false
+      args:
+        executable: /bin/bash
+    - name: Show containerd bootstrap log tail
+      debug:
+        var: __containerd_bootstrap_log_tail.stdout_lines
+    - name: Fail containerd bootstrap with log path
+      fail:
+        msg: "containerd-bootstrap.sh failed. See {{ __bootstrap_dir }}/logs/containerd-bootstrap.{{ __session_time }}.log"
+  when: "'containerd' in k8s_install_services"

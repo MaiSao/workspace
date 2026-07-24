@@ -1,0 +1,65 @@
+---
+- name: Check SNMP exporter images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ service_image_requirements.snmp_exporter | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - "'snmp_exporter' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Install snmpd package on nodes
+  package:
+    name: net-snmp
+    state: present
+  when: "'snmp_exporter' in k8s_install_services"
+
+- name: Create SNMP exporter host config directory
+  file:
+    path: /etc/snmp_exporter
+    state: directory
+  when: "'snmp_exporter' in k8s_install_services"
+
+- name: Install snmpd configuration on nodes
+  copy:
+    src: snmpd.conf
+    dest: /etc/snmp/snmpd.conf
+    mode: '0644'
+  when: "'snmp_exporter' in k8s_install_services"
+
+- name: Install SNMP exporter module configuration on nodes
+  copy:
+    src: snmp.yml
+    dest: /etc/snmp_exporter/snmp.yml
+    mode: '0644'
+  when: "'snmp_exporter' in k8s_install_services"
+
+- name: Start snmpd service on nodes
+  service:
+    name: snmpd
+    state: restarted
+    enabled: true
+  when: "'snmp_exporter' in k8s_install_services"
+
+- name: Render SNMP exporter manifest on bootstrap master
+  template:
+    src: snmp-exporter.yaml.j2
+    dest: "{{ __bootstrap_dir }}/snmp-exporter.yaml"
+  when:
+    - "'snmp_exporter' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Apply SNMP exporter
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/snmp-exporter.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'snmp_exporter' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]

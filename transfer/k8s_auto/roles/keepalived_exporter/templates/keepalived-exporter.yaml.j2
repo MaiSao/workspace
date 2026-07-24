@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: keepalived-exporter
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: keepalived-exporter
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: keepalived-exporter
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: keepalived-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9165"
+        prometheus.io/path: "{{ keepalived_exporter.telemetry_path | default('/metrics') }}"
+    spec:
+      hostPID: true
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 10
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: keepalived-exporter
+          image: {{ __registry_prefix }}/{{ keepalived_exporter_image }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - --web.listen-address={{ keepalived_exporter.listen_address }}
+            - --web.telemetry-path={{ keepalived_exporter.telemetry_path | default('/metrics') }}
+            - --ka.pid-path={{ keepalived_exporter.pid_path | default('/host-run/keepalived.pid') }}
+{% for arg in (keepalived_exporter.extra_args | default('', true)).split() %}
+            - {{ arg | quote }}
+{% endfor %}
+          ports:
+            - name: metrics
+              containerPort: 9165
+              protocol: TCP
+          resources:
+{{ k8s_resources.keepalived_exporter | to_nice_yaml(indent=2) | indent(12, true) }}
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: false
+            readOnlyRootFilesystem: true
+          readinessProbe:
+            tcpSocket:
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: metrics
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: host-run
+              mountPath: /host-run
+              readOnly: true
+            - name: host-tmp
+              mountPath: /tmp
+              readOnly: true
+      volumes:
+        - name: host-run
+          hostPath:
+            path: /run
+            type: Directory
+        - name: host-tmp
+          hostPath:
+            path: /tmp
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keepalived-exporter
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: keepalived-exporter
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: keepalived-exporter
+  ports:
+    - name: metrics
+      port: 9165
+      targetPort: metrics
+      protocol: TCP

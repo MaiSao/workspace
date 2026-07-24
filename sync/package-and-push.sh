@@ -9,7 +9,7 @@ DOCKER_USER="saocd"
 IMAGE_NAME="bridge"
 
 # File hoặc thư mục cần đóng gói
-SOURCE_PATH="/workspace/k8s_auto"
+SOURCE_PATH="/workspace/transfer"
 
 # Tag theo ngày
 TAG=$(date +%Y%m%d)

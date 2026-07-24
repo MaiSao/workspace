@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: haproxy-exporter
+  namespace: kube-system
+  labels:
+    app: haproxy-exporter
+spec:
+  selector:
+    matchLabels:
+      app: haproxy-exporter
+  template:
+    metadata:
+      labels:
+        app: haproxy-exporter
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9101"
+    spec:
+      hostNetwork: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: haproxy-exporter
+          image: {{ __registry_prefix }}/{{ haproxy_exporter_image }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - {{ ('--web.listen-address=' ~ haproxy_exporter.listen_address) | quote }}
+            - {{ ('--haproxy.scrape-uri=' ~ haproxy_exporter.scrape_uri) | quote }}
+{% for arg in (haproxy_exporter.extra_args | default('', true)).split() %}
+            - {{ arg | quote }}
+{% endfor %}
+          ports:
+            - containerPort: 9101
+              hostPort: 9101
+              name: metrics
+              protocol: TCP
+          resources:
+{{ k8s_resources.haproxy_exporter | to_nice_yaml(indent=2) | indent(12, true) }}

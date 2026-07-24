@@ -84,7 +84,7 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 ## Change Log For Multi-Role Split
 
 - Split the active install flow into service-level roles: `common`, `containerd`, `haproxy`, `keepalived`, `kubeadm`, `calico`, `multus`, `whereabouts`, `sriov`, `macvlan`, `coredns`, `metrics_server`, `kube_state_metrics`, `kubelet_csr_approver`, `kyverno`, `etcd_jobs`, individual exporter roles, and `k8s_tuning`.
-- Updated `k8s_auto/site.yml` to a single play for `k8s_cluster`; every component role is listed explicitly in deterministic order with enable and host guards.
+- Updated `k8s_auto/site.yml` to a single play for `k8s_master:k8s_worker`; every component role is listed explicitly in deterministic order with enable and host guards.
 - Updated `k8s_auto/group_vars/services.yml` service names to match the new roles. Default full install still runs when using `ansible-playbook -i inventory.ini site.yml`.
 - Split the old bootstrap responsibilities into explicit `common` role tasks, `containerd-bootstrap.sh.j2`, `roles/haproxy/templates/haproxy.cfg.j2`, and `roles/keepalived/templates/keepalived.conf.j2`. Destructive common reset tasks run only when `common_bootstrap_enabled: true` and `__rerun_bootstrap` is defined.
 - Moved CNI and add-on manifest rendering into their owning service roles so templates live with the role that applies them. Legacy bundle roles remain in the tree for reference but are no longer called by `site.yml`.
@@ -98,7 +98,7 @@ Do not commit real host passwords, registry credentials, or production IPs. Revi
 
 ## Change Log For Single-Play Site
 
-- Simplified `k8s_auto/site.yml` to one play named `Install Kubernetes cluster` targeting `k8s_cluster`.
+- Simplified `k8s_auto/site.yml` to one play named `Install Kubernetes cluster` targeting `k8s_master:k8s_worker`.
 - Kept `site.yml` role-only and listed every enabled component role directly in deterministic order.
 - Added/kept role-level host guards so master-only roles, first-master roles, worker joins, add-ons, and patching run only where intended.
 

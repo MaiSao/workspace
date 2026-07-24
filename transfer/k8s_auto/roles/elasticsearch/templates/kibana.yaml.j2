@@ -1,0 +1,182 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-config
+  namespace: {{ elasticsearch_namespace }}
+data:
+  kibana.yml: |
+    server.name: kibana
+    server.host: "0.0.0.0"
+
+    elasticsearch.requestTimeout: 120000
+    elasticsearch.pingTimeout: 30000
+
+    xpack.security.session.idleTimeout: "1h"
+    xpack.security.session.lifespan: "8h"
+
+    elasticsearch.hosts: ["https://elasticsearch-master:9200"]
+    elasticsearch.username: "${ELASTIC_USERNAME}"
+    elasticsearch.password: "${ELASTIC_PASSWORD}"
+    elasticsearch.ssl.certificateAuthorities: ["/usr/share/kibana/config/certs/ca.crt"]
+    elasticsearch.ssl.verificationMode: none
+    xpack.security.encryptionKey: "{{ elasticsearch_kibana.security_encryption_key }}"
+    xpack.encryptedSavedObjects.encryptionKey: "{{ elasticsearch_kibana.saved_objects_encryption_key }}"
+    xpack.reporting.encryptionKey: "{{ elasticsearch_kibana.reporting_encryption_key }}"
+    i18n.locale: "en"
+    server.basePath: "{{ elasticsearch_kibana.base_path }}"
+    server.rewriteBasePath: true
+
+    monitoring.ui.ccs.enabled: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: {{ elasticsearch_namespace }}
+spec:
+  progressDeadlineSeconds: 600
+  replicas: {{ elasticsearch_kibana.replicas }}
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: kibana
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - kibana
+                topologyKey: kubernetes.io/hostname
+              weight: 100
+      initContainers:
+        - name: setup-kibana-system-user
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ elasticsearch_setup_image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ELASTIC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: es-basic-auth
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-basic-auth
+            - name: KIBANA_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: es-kibana-auth
+            - name: KIBANA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-kibana-auth
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              i=0
+              until curl -kfsS -u "${ELASTIC_USERNAME}:${ELASTIC_PASSWORD}" https://elasticsearch-master:9200 >/dev/null; do
+                i=$((i + 1))
+                if [ "$i" -ge 60 ]; then
+                  echo "Elasticsearch API did not become ready before timeout" >&2
+                  exit 1
+                fi
+                sleep 10
+              done
+              curl -kfsS -u "${ELASTIC_USERNAME}:${ELASTIC_PASSWORD}" \
+                -X POST "https://elasticsearch-master:9200/_security/user/${KIBANA_USERNAME}/_password" \
+                -H "Content-Type: application/json" \
+                -d "{\"password\":\"${KIBANA_PASSWORD}\"}"
+          resources:
+{{ elasticsearch_setup_job_resources | to_nice_yaml(indent=2) | indent(12, true) }}
+      containers:
+        - name: kibana
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ kibana_image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ELASTIC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: es-kibana-auth
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-kibana-auth
+          ports:
+            - containerPort: 5601
+              protocol: TCP
+          resources:
+{{ elasticsearch_kibana.resources | to_nice_yaml(indent=2) | indent(12, true) }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsGroup: 1000
+            runAsNonRoot: true
+            runAsUser: 1000
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /usr/share/kibana/data
+              name: data
+            - mountPath: /usr/share/kibana/config/kibana.yml
+              name: kibana-config
+              subPath: kibana.yml
+            - mountPath: /usr/share/kibana/config/certs
+              name: elastic-certs
+              readOnly: true
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        {{ elasticsearch_node_selector_key | default('es-role') }}: {{ elasticsearch_kibana.node_selector_role }}
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - emptyDir: {}
+          name: data
+        - configMap:
+            defaultMode: 420
+            name: kibana-config
+          name: kibana-config
+        - name: elastic-certs
+          secret:
+            defaultMode: 420
+            secretName: elastic-certs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  namespace: {{ elasticsearch_namespace }}
+spec:
+  ports:
+    - nodePort: {{ elasticsearch_kibana.node_port }}
+      port: 5601
+      protocol: TCP
+      targetPort: 5601
+  selector:
+    app: kibana
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  type: NodePort

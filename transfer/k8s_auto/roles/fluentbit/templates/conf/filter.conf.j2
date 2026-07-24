@@ -1,0 +1,102 @@
+[FILTER]
+    Name   grep
+    Alias grep_mess
+    Match  vocs40.*
+    regex  message .{1,}
+
+[FILTER]
+    Name  modify
+    Alias modify.addVNF
+    Match vocs40.ocs*
+    ADD   objectType VNF
+
+[FILTER]
+    Name  modify
+    Alias modify.mano
+    Match vocs40.mano
+    ADD   objectType MANO
+
+[FILTER]
+    Name modify
+    Match vocs40.kube
+    ADD vimName ${FLB_CLUSTER}
+    ADD severity INFO
+
+[FILTER]
+    Name          parser
+    Alias         parser.service
+    Match         vocs40.ocs*
+    Key_Name      log_path
+    Parser        ocs.service_from_path
+    Preserve_Key  True
+    Reserve_Data  True
+
+[FILTER]
+    Name          parser
+    Match         vocs40.mano
+    Key_Name      log_path
+    Parser        mano.service_from_path
+    Preserve_Key  True
+    Reserve_Data  True
+
+
+[FILTER]
+    Name          parser
+    Alias         kube_container_path
+    Match         vocs40.kube
+    Key_Name      log_path
+    Parser        kube_container_path
+    Preserve_Key  True
+    Reserve_Data  True
+
+[FILTER]
+    Name modify
+    Match host.*
+    ADD hostIp ${FLB_HOST_IP}
+
+[FILTER]
+    Name modify
+    Alias modify_last
+    Match vocs40.*
+    ADD hostName ${FLB_HOST_NAME}
+    ADD hostIp ${FLB_HOST_IP}
+    Remove raw_message
+    Rename timestamp @timestamp
+    Rename ingestion_time @ingestion_time
+
+[FILTER]
+    Name modify
+    Alias mda-jsonl-filter-modify
+    Match mda-jsonl-tag
+    ADD hostName ${FLB_HOST_NAME}
+    ADD hostIp ${FLB_HOST_IP}
+    Remove raw_message
+
+[FILTER]
+    Name          parser
+    Match         mda-jsonl-tag
+    Key_Name      log_path
+    Parser        mda-jsonl-log-path
+    Preserve_Key  True
+    Reserve_Data  True
+
+[FILTER]
+    Name parser
+    Match mda-mysql-audit
+    Key_Name audit_record
+    Parser mysql_audit_inner
+    Reserve_Data On
+
+[FILTER]
+    Name nest
+    Match mda-mysql-audit
+    Operation lift
+    Nested_under audit_record
+
+[FILTER]
+    Name          parser
+    Match         mda-mysql-slow
+    Key_Name      log
+    Parser        mysql_slow_parser
+    Preserve_Key  True
+    Reserve_Data  True

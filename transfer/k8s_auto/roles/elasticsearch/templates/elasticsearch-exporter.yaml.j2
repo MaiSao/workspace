@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: elasticsearch-exporter
+  name: elasticsearch-exporter
+  namespace: {{ elasticsearch_namespace }}
+spec:
+  progressDeadlineSeconds: 600
+  replicas: {{ elasticsearch_exporter.replicas }}
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: elasticsearch-exporter
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-exporter
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - elasticsearch-exporter
+                topologyKey: kubernetes.io/hostname
+              weight: 100
+      containers:
+        - name: elasticsearch-exporter
+          image: {{ __registry_prefix | default(registry_name ~ ':' ~ registry_port) }}/{{ elasticsearch_exporter_image }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - --es.uri=https://$(ES_USERNAME):$(ES_PASSWORD)@elasticsearch-master:9200
+            - --es.all
+            - --es.ssl-skip-verify
+            - --es.indices
+            - --es.indices_settings
+            - --es.indices_mappings
+            - --es.cluster_settings
+            - --es.shards
+            - --es.snapshots
+          env:
+            - name: ES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: es-basic-auth
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-basic-auth
+          ports:
+            - containerPort: 9114
+              name: metrics
+              protocol: TCP
+          resources:
+{{ elasticsearch_exporter.resources | to_nice_yaml(indent=2) | indent(12, true) }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsGroup: 65534
+            runAsNonRoot: true
+            runAsUser: 65534
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        {{ elasticsearch_node_selector_key | default('es-role') }}: {{ elasticsearch_exporter.node_selector_role }}
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: elasticsearch-exporter
+  name: elasticsearch-exporter
+  namespace: {{ elasticsearch_namespace }}
+spec:
+  ports:
+    - name: metrics
+      nodePort: {{ elasticsearch_exporter.node_port }}
+      port: 9114
+      protocol: TCP
+      targetPort: metrics
+  selector:
+    app: elasticsearch-exporter
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  type: NodePort

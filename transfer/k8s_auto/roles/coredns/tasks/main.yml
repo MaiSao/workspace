@@ -1,0 +1,19 @@
+---
+- name: Render CoreDNS manifest on bootstrap master
+  template:
+    src: coredns.yaml.j2
+    dest: "{{ __bootstrap_dir }}/coredns.yaml"
+  when:
+    - "'coredns' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Apply CoreDNS configuration
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/coredns.yaml
+    kubectl rollout restart deployment/coredns -n kube-system
+  args:
+    executable: /bin/bash
+  when:
+    - "'coredns' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]

@@ -1,0 +1,26 @@
+---
+- name: Apply CoreDNS resource requests and limits
+  shell: |
+    set -Eeuo pipefail
+    kubectl set resources deployment/coredns -n kube-system \
+      --containers=coredns \
+      --requests=cpu={{ k8s_resources.coredns.requests.cpu }},memory={{ k8s_resources.coredns.requests.memory }} \
+      --limits=cpu={{ k8s_resources.coredns.limits.cpu }},memory={{ k8s_resources.coredns.limits.memory }}
+  args:
+    executable: /bin/bash
+  when:
+    - inventory_hostname == groups['k8s_master'][0]
+    - "'k8s_tuning' in k8s_install_services"
+
+- name: Apply kube-proxy resource requests and limits
+  shell: |
+    set -Eeuo pipefail
+    kubectl set resources daemonset/kube-proxy -n kube-system \
+      --containers=kube-proxy \
+      --requests=cpu={{ k8s_resources.kube_proxy.requests.cpu }},memory={{ k8s_resources.kube_proxy.requests.memory }} \
+      --limits=cpu={{ k8s_resources.kube_proxy.limits.cpu }},memory={{ k8s_resources.kube_proxy.limits.memory }}
+  args:
+    executable: /bin/bash
+  when:
+    - inventory_hostname == groups['k8s_master'][0]
+    - "'k8s_tuning' in k8s_install_services"

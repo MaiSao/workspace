@@ -1,0 +1,20 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+APISERVER_VIP={{ k8s_master_ip }}
+APISERVER_DEST_PORT={{ ha_apiserver_port }}
+
+errorExit() {
+    echo "* * * $*" 1>&2
+    exit 1
+}
+
+curl --silent --max-time 2 \
+    --insecure https://localhost:${APISERVER_DEST_PORT}/readyz \
+    -o /dev/null || errorExit "Error GET https://localhost:${APISERVER_DEST_PORT}/readyz"
+
+if ip addr | grep -q "${APISERVER_VIP}"; then
+    curl --silent --max-time 2 \
+        --insecure https://${APISERVER_VIP}:${APISERVER_DEST_PORT}/readyz \
+        -o /dev/null || errorExit "Error GET https://${APISERVER_VIP}:${APISERVER_DEST_PORT}/readyz"
+fi

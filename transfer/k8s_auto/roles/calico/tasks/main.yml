@@ -1,0 +1,37 @@
+---
+- name: Check Calico images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ service_image_requirements.calico | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - "'calico' in k8s_install_services"
+    - cni_prime | default('calico') == 'calico'
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Render Calico manifest on bootstrap master
+  template:
+    src: calico-v3.28.2.yaml.j2
+    dest: "{{ __bootstrap_dir }}/calico-v3.28.2.yaml"
+  when:
+    - "'calico' in k8s_install_services"
+    - cni_prime | default('calico') == 'calico'
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Apply Calico primary CNI
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/calico-v3.28.2.yaml
+    kubectl set env daemonset/calico-node -n kube-system \
+      IP_AUTODETECTION_METHOD=cidr={{ ip_autodetection_method_cidr }}
+  args:
+    executable: /bin/bash
+  when:
+    - "'calico' in k8s_install_services"
+    - cni_prime | default('calico') == 'calico'
+    - inventory_hostname == groups['k8s_master'][0]

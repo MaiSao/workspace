@@ -94,6 +94,75 @@
     - pat
     - always
 
+- name: Log PAT case execution plan
+  debug:
+    msg:
+      - "PAT CASE {{ item.id }} | {{ item.title }}"
+      - "scope={{ item.scope }} priority={{ item.priority }} mode={{ item.mode }} category={{ item.category }}"
+      - "planned_status={{ __pat_planned_status }}"
+      - "planned_target_count={{ __pat_planned_target_count }}"
+      - "planned_targets={{ __pat_planned_targets_text }}"
+      - "command:"
+      - "{{ item.command | default('# No command defined for this case.') }}"
+  vars:
+    __pat_enabled: "{{ item.enabled | default(true) | bool }}"
+    __pat_applicable: "{{ item.applicable | default(true) | bool }}"
+    __pat_planned_target_count: >-
+      {{
+        1
+        if item.scope == 'cluster'
+        else (
+          pat_cluster_hosts | length
+          if item.scope in ['host', 'all']
+          else (
+            pat_master_hosts | length
+            if item.scope == 'master'
+            else (
+              pat_worker_hosts | length
+              if item.scope == 'worker'
+              else 0
+            )
+          )
+        )
+      }}
+    __pat_planned_targets_text: >-
+      {{
+        'cluster'
+        if item.scope == 'cluster'
+        else (
+          pat_cluster_hosts | join(', ')
+          if item.scope in ['host', 'all'] and (pat_cluster_hosts | length) > 0
+          else (
+            pat_master_hosts | join(', ')
+            if item.scope == 'master' and (pat_master_hosts | length) > 0
+            else (
+              pat_worker_hosts | join(', ')
+              if item.scope == 'worker' and (pat_worker_hosts | length) > 0
+              else 'none'
+            )
+          )
+        )
+      }}
+    __pat_planned_status: >-
+      {{
+        'N/A'
+        if (not (__pat_enabled | bool) or not (__pat_applicable | bool))
+        else (
+          'RUN'
+          if (__pat_planned_target_count | int) > 0
+          else 'FAILED_NO_TARGET'
+        )
+      }}
+  loop: "{{ pat_effective_cases }}"
+  loop_control:
+    label: "{{ item.id }} {{ item.title }}"
+  when:
+    - inventory_hostname == pat_bootstrap_master
+    - pat_log_case_details | bool
+  tags:
+    - pat
+    - always
+
 - name: Record catalog cases not automated yet
   set_fact:
     pat_results: "{{ pat_results + [__pat_catalog_gap_result] }}"
@@ -111,6 +180,7 @@
       reason: "Case is defined in PAT_CASES.md but has no automated command in pat_cases yet."
       recommendation: "Implement an Ansible command, or attach approved manual/HYBRID evidence and mark applicability explicitly."
       rc: 0
+      command: ""
       stdout: ""
       stderr: ""
   loop: "{{ pat_catalog_case_ids | difference(__pat_automated_case_ids) | sort }}"
@@ -119,6 +189,56 @@
   when:
     - inventory_hostname == pat_bootstrap_master
     - pat_record_catalog_gap_cases | bool
+  tags:
+    - pat
+    - report
+
+- name: Record applicable PAT cases with no execution target
+  set_fact:
+    pat_results: "{{ pat_results + [__pat_no_target_result] }}"
+  vars:
+    __pat_planned_target_count: >-
+      {{
+        1
+        if item.scope == 'cluster'
+        else (
+          pat_cluster_hosts | length
+          if item.scope in ['host', 'all']
+          else (
+            pat_master_hosts | length
+            if item.scope == 'master'
+            else (
+              pat_worker_hosts | length
+              if item.scope == 'worker'
+              else 0
+            )
+          )
+        )
+      }}
+    __pat_no_target_result:
+      id: "{{ item.id }}"
+      title: "{{ item.title }}"
+      priority: "{{ item.priority }}"
+      mode: "{{ item.mode }}"
+      category: "{{ item.category }}"
+      scope: "{{ item.scope }}"
+      host: "cluster"
+      status: "FAILED"
+      reason: "Case is applicable but no inventory target matches scope={{ item.scope }}."
+      recommendation: "Fix inventory or mark the feature/case N/A explicitly if this scope is not part of the approved cluster design."
+      rc: 1
+      command: "{{ item.command | default('') }}"
+      stdout: ""
+      stderr: ""
+  loop: "{{ pat_effective_cases }}"
+  loop_control:
+    label: "{{ item.id }} {{ item.title }}"
+  when:
+    - inventory_hostname == pat_bootstrap_master
+    - item.enabled | default(true) | bool
+    - item.applicable | default(true) | bool
+    - item.scope != 'catalog'
+    - (__pat_planned_target_count | int) == 0
   tags:
     - pat
     - report
@@ -146,6 +266,7 @@
         }}
       recommendation: "{{ item.recommendation }}"
       rc: 0
+      command: "{{ item.command | default('') }}"
       stdout: ""
       stderr: ""
   loop: "{{ pat_effective_cases }}"
@@ -157,6 +278,49 @@
   tags:
     - pat
     - report
+
+- name: Log N/A PAT cases
+  debug:
+    msg:
+      - "PAT CASE {{ item.id }} | {{ item.title }}"
+      - "scope={{ item.scope }} priority={{ item.priority }} mode={{ item.mode }} category={{ item.category }}"
+      - "status=N/A"
+      - >-
+        reason={{
+          item.na_reason
+          if (item.na_reason | default('') | length > 0)
+          else ('Case is disabled.' if not (item.enabled | default(true) | bool) else 'Feature is not applicable to the approved design.')
+        }}
+      - "recommendation={{ item.recommendation }}"
+  loop: "{{ pat_effective_cases }}"
+  loop_control:
+    label: "{{ item.id }} {{ item.title }}"
+  when:
+    - inventory_hostname == pat_bootstrap_master
+    - pat_log_case_details | bool
+    - (not (item.enabled | default(true) | bool)) or (not (item.applicable | default(true) | bool))
+  tags:
+    - pat
+    - report
+
+- name: Log host-scope PAT commands before execution
+  debug:
+    msg:
+      - "PAT CASE {{ item.id }} | {{ item.title }}"
+      - "target_host={{ inventory_hostname }} scope={{ item.scope }} priority={{ item.priority }} mode={{ item.mode }} category={{ item.category }}"
+      - "command:"
+      - "{{ item.command }}"
+  loop: "{{ pat_effective_cases }}"
+  loop_control:
+    label: "{{ item.id }} {{ item.title }}"
+  when:
+    - pat_log_case_details | bool
+    - item.enabled | default(true) | bool
+    - item.applicable | default(true) | bool
+    - item.scope in ['host', 'all'] or (item.scope == 'master' and inventory_hostname in pat_master_hosts) or (item.scope == 'worker' and inventory_hostname in pat_worker_hosts)
+  tags:
+    - pat
+    - host
 
 - name: Run host-scope PAT cases
   shell: |
@@ -181,6 +345,27 @@
     - pat
     - host
 
+- name: Log host-scope PAT command results
+  debug:
+    msg:
+      - "PAT CASE {{ item.item.id }} | {{ item.item.title }}"
+      - "target_host={{ inventory_hostname }} scope={{ item.item.scope }} priority={{ item.item.priority }} mode={{ item.item.mode }}"
+      - "rc={{ item.rc | int }} status={{ 'PASS' if (item.rc | int) == 0 else 'FAILED' }}"
+      - "stdout:"
+      - "{{ (item.stdout | default('') | trim) if (item.stdout | default('') | trim | length > 0) else '<empty>' }}"
+      - "stderr:"
+      - "{{ (item.stderr | default('') | trim) if (item.stderr | default('') | trim | length > 0) else '<empty>' }}"
+      - "recommendation={{ '' if (item.rc | int) == 0 else item.item.recommendation }}"
+  loop: "{{ __pat_host_runs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.id | default('skipped') }}"
+  when:
+    - pat_log_case_details | bool
+    - item.skipped is not defined
+  tags:
+    - pat
+    - host
+
 - name: Record host-scope PAT results
   set_fact:
     pat_results: "{{ pat_results + [__pat_result] }}"
@@ -198,6 +383,7 @@
       reason: "{{ __pat_case.success_hint if (item.rc | int) == 0 else ((item.stderr | default('') | trim) or (item.stdout | default('') | trim) or 'Command returned non-zero exit code.') }}"
       recommendation: "{{ '' if (item.rc | int) == 0 else __pat_case.recommendation }}"
       rc: "{{ item.rc | int }}"
+      command: "{{ __pat_case.command | default('') }}"
       stdout: "{{ item.stdout | default('') | trim }}"
       stderr: "{{ item.stderr | default('') | trim }}"
   loop: "{{ __pat_host_runs.results | default([]) }}"
@@ -208,6 +394,26 @@
   tags:
     - pat
     - host
+
+- name: Log cluster-scope PAT commands before execution
+  debug:
+    msg:
+      - "PAT CASE {{ item.id }} | {{ item.title }}"
+      - "target=cluster bootstrap_master={{ pat_bootstrap_master }} scope={{ item.scope }} priority={{ item.priority }} mode={{ item.mode }} category={{ item.category }}"
+      - "command:"
+      - "{{ item.command }}"
+  loop: "{{ pat_effective_cases }}"
+  loop_control:
+    label: "{{ item.id }} {{ item.title }}"
+  when:
+    - inventory_hostname == pat_bootstrap_master
+    - pat_log_case_details | bool
+    - item.enabled | default(true) | bool
+    - item.applicable | default(true) | bool
+    - item.scope == 'cluster'
+  tags:
+    - pat
+    - cluster
 
 - name: Run cluster-scope PAT cases on bootstrap master
   shell: |
@@ -233,6 +439,28 @@
     - pat
     - cluster
 
+- name: Log cluster-scope PAT command results
+  debug:
+    msg:
+      - "PAT CASE {{ item.item.id }} | {{ item.item.title }}"
+      - "target=cluster bootstrap_master={{ pat_bootstrap_master }} scope={{ item.item.scope }} priority={{ item.item.priority }} mode={{ item.item.mode }}"
+      - "rc={{ item.rc | int }} status={{ 'PASS' if (item.rc | int) == 0 else 'FAILED' }}"
+      - "stdout:"
+      - "{{ (item.stdout | default('') | trim) if (item.stdout | default('') | trim | length > 0) else '<empty>' }}"
+      - "stderr:"
+      - "{{ (item.stderr | default('') | trim) if (item.stderr | default('') | trim | length > 0) else '<empty>' }}"
+      - "recommendation={{ '' if (item.rc | int) == 0 else item.item.recommendation }}"
+  loop: "{{ __pat_cluster_runs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.id | default('skipped') }}"
+  when:
+    - inventory_hostname == pat_bootstrap_master
+    - pat_log_case_details | bool
+    - item.skipped is not defined
+  tags:
+    - pat
+    - cluster
+
 - name: Record cluster-scope PAT results
   set_fact:
     pat_results: "{{ pat_results + [__pat_result] }}"
@@ -250,6 +478,7 @@
       reason: "{{ __pat_case.success_hint if (item.rc | int) == 0 else ((item.stderr | default('') | trim) or (item.stdout | default('') | trim) or 'Command returned non-zero exit code.') }}"
       recommendation: "{{ '' if (item.rc | int) == 0 else __pat_case.recommendation }}"
       rc: "{{ item.rc | int }}"
+      command: "{{ __pat_case.command | default('') }}"
       stdout: "{{ item.stdout | default('') | trim }}"
       stderr: "{{ item.stderr | default('') | trim }}"
   loop: "{{ __pat_cluster_runs.results | default([]) }}"
@@ -273,12 +502,28 @@
     - pat
     - report
 
+- name: Initialize PAT aggregate defaults on every host
+  set_fact:
+    pat_all_results: "{{ pat_all_results | default([]) }}"
+    pat_case_summary: "{{ pat_case_summary | default([]) }}"
+    pat_assertion_pass_count: "{{ pat_assertion_pass_count | default(0) }}"
+    pat_assertion_failed_count: "{{ pat_assertion_failed_count | default(0) }}"
+    pat_assertion_na_count: "{{ pat_assertion_na_count | default(0) }}"
+    pat_assertion_total_count: "{{ pat_assertion_total_count | default(0) }}"
+    pat_pass_count: "{{ pat_pass_count | default(0) }}"
+    pat_failed_count: "{{ pat_failed_count | default(0) }}"
+    pat_na_count: "{{ pat_na_count | default(0) }}"
+    pat_total_count: "{{ pat_total_count | default(0) }}"
+  tags:
+    - pat
+    - report
+
 - name: Calculate PAT summary
   set_fact:
-    pat_assertion_pass_count: "{{ pat_all_results | selectattr('status', 'equalto', 'PASS') | list | length }}"
-    pat_assertion_failed_count: "{{ pat_all_results | selectattr('status', 'equalto', 'FAILED') | list | length }}"
-    pat_assertion_na_count: "{{ pat_all_results | selectattr('status', 'equalto', 'N/A') | list | length }}"
-    pat_assertion_total_count: "{{ pat_all_results | length }}"
+    pat_assertion_pass_count: "{{ pat_all_results | default([]) | selectattr('status', 'equalto', 'PASS') | list | length }}"
+    pat_assertion_failed_count: "{{ pat_all_results | default([]) | selectattr('status', 'equalto', 'FAILED') | list | length }}"
+    pat_assertion_na_count: "{{ pat_all_results | default([]) | selectattr('status', 'equalto', 'N/A') | list | length }}"
+    pat_assertion_total_count: "{{ pat_all_results | default([]) | length }}"
   when: inventory_hostname == pat_bootstrap_master
   tags:
     - pat
@@ -288,17 +533,40 @@
   set_fact:
     pat_case_summary: "{{ (pat_case_summary | default([])) + [__pat_case_summary_item] }}"
   vars:
-    __pat_case_items: "{{ pat_all_results | selectattr('id', 'equalto', item) | list }}"
+    __pat_case_items: "{{ pat_all_results | default([]) | selectattr('id', 'equalto', item) | list }}"
     __pat_first_case_item: "{{ __pat_case_items | first }}"
     __pat_case_failed_count: "{{ __pat_case_items | selectattr('status', 'equalto', 'FAILED') | list | length }}"
     __pat_case_pass_count: "{{ __pat_case_items | selectattr('status', 'equalto', 'PASS') | list | length }}"
     __pat_case_na_count: "{{ __pat_case_items | selectattr('status', 'equalto', 'N/A') | list | length }}"
+    __pat_case_failed_items: "{{ __pat_case_items | selectattr('status', 'equalto', 'FAILED') | list }}"
+    __pat_case_na_items: "{{ __pat_case_items | selectattr('status', 'equalto', 'N/A') | list }}"
     __pat_case_status: >-
       {{
         'FAILED'
-        if (__pat_case_failed_count | int) > 0
-        else ('PASS' if (__pat_case_pass_count | int) > 0 else 'N/A')
+        if ((__pat_case_failed_count | int) > 0 or ((__pat_case_pass_count | int) > 0 and (__pat_case_na_count | int) > 0))
+        else ('PASS' if (__pat_case_pass_count | int) == (__pat_case_items | length) else 'N/A')
       }}
+    __pat_case_failed_hosts: "{{ __pat_case_failed_items | map(attribute='host') | unique | list }}"
+    __pat_case_na_hosts: "{{ __pat_case_na_items | map(attribute='host') | unique | list }}"
+    __pat_case_reason: >-
+      {%- if (__pat_case_failed_count | int) > 0 -%}
+      {{ __pat_case_failed_count }} assertion(s) failed on {{ __pat_case_failed_hosts | join(', ') }}.
+      {%- elif (__pat_case_pass_count | int) > 0 and (__pat_case_na_count | int) > 0 -%}
+      Case has mixed PASS and N/A assertions, so the cluster-level result is not fully accepted.
+      {%- elif (__pat_case_pass_count | int) == (__pat_case_items | length) -%}
+      All applicable assertions passed for this PAT case across the cluster.
+      {%- else -%}
+      Case is not applicable to this cluster/profile.
+      {%- endif -%}
+    __pat_case_recommendation: >-
+      {%- if (__pat_case_failed_count | int) > 0 -%}
+      {{ (__pat_case_failed_items | first).recommendation }}
+      {%- elif (__pat_case_pass_count | int) > 0 and (__pat_case_na_count | int) > 0 -%}
+      Review applicability and inventory coverage; a cluster-level PAT case should be either fully passed or explicitly N/A.
+      {%- elif (__pat_case_na_count | int) > 0 -%}
+      {{ (__pat_case_na_items | first).recommendation }}
+      {%- else -%}
+      {%- endif -%}
     __pat_case_summary_item:
       id: "{{ item }}"
       title: "{{ __pat_first_case_item.title }}"
@@ -306,11 +574,15 @@
       mode: "{{ __pat_first_case_item.mode }}"
       category: "{{ __pat_first_case_item.category }}"
       status: "{{ __pat_case_status }}"
+      reason: "{{ __pat_case_reason }}"
+      recommendation: "{{ __pat_case_recommendation }}"
       assertion_total: "{{ __pat_case_items | length }}"
       assertion_pass: "{{ __pat_case_pass_count | int }}"
       assertion_failed: "{{ __pat_case_failed_count | int }}"
       assertion_na: "{{ __pat_case_na_count | int }}"
-  loop: "{{ pat_all_results | map(attribute='id') | unique | sort }}"
+      failed_hosts: "{{ __pat_case_failed_hosts }}"
+      na_hosts: "{{ __pat_case_na_hosts }}"
+  loop: "{{ pat_all_results | default([]) | map(attribute='id') | unique | sort }}"
   loop_control:
     label: "{{ item }}"
   when: inventory_hostname == pat_bootstrap_master
@@ -329,11 +601,30 @@
     - pat
     - report
 
+- name: Log cluster-level PAT case results
+  debug:
+    msg:
+      - "PAT CASE {{ item.id }} | {{ item.title }}"
+      - "cluster_status={{ item.status }} priority={{ item.priority }} mode={{ item.mode }} category={{ item.category }}"
+      - "assertions total={{ item.assertion_total }} pass={{ item.assertion_pass }} failed={{ item.assertion_failed }} n/a={{ item.assertion_na }}"
+      - "failed_hosts={{ item.failed_hosts | join(', ') if (item.failed_hosts | length > 0) else 'none' }}"
+      - "reason={{ item.reason }}"
+      - "recommendation={{ item.recommendation if (item.recommendation | default('') | length > 0) else '<none>' }}"
+  loop: "{{ pat_case_summary | sort(attribute='id') }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when:
+    - inventory_hostname == pat_bootstrap_master
+    - pat_log_case_details | bool
+  tags:
+    - pat
+    - report
+
 - name: Write PAT JSON report
   copy:
     dest: "{{ pat_output_dir }}/{{ pat_report_prefix }}.json"
     mode: "0640"
-    content: "{{ {'run_id': pat_run_id, 'inventory_topology': {'masters': pat_master_hosts, 'workers': pat_worker_hosts, 'cluster_hosts': pat_cluster_hosts, 'master_count': pat_master_hosts | length, 'worker_count': pat_worker_hosts | length, 'cluster_host_count': pat_cluster_hosts | length}, 'usage': {'app_namespaces': pat_usage_app_namespaces | default(''), 'pvc_storage_classes': pat_usage_pvc_storage_classes | default(''), 'nad_references': pat_usage_nad_references | default(''), 'networkpolicy_count': pat_usage_networkpolicy_count | default(0) | int, 'hpa_count': pat_usage_hpa_count | default(0) | int, 'pdb_count': pat_usage_pdb_count | default(0) | int, 'ingress_count': pat_usage_ingress_count | default(0) | int, 'gateway_count': pat_usage_gateway_count | default(0) | int}, 'summary': {'cases': {'total': pat_total_count | int, 'pass': pat_pass_count | int, 'failed': pat_failed_count | int, 'na': pat_na_count | int}, 'assertions': {'total': pat_assertion_total_count | int, 'pass': pat_assertion_pass_count | int, 'failed': pat_assertion_failed_count | int, 'na': pat_assertion_na_count | int}}, 'case_summary': pat_case_summary, 'results': pat_all_results} | to_nice_json }}"
+    content: "{{ {'run_id': pat_run_id, 'inventory_topology': {'masters': pat_master_hosts, 'workers': pat_worker_hosts, 'cluster_hosts': pat_cluster_hosts, 'master_count': pat_master_hosts | length, 'worker_count': pat_worker_hosts | length, 'cluster_host_count': pat_cluster_hosts | length}, 'usage': {'app_namespaces': pat_usage_app_namespaces | default(''), 'pvc_storage_classes': pat_usage_pvc_storage_classes | default(''), 'nad_references': pat_usage_nad_references | default(''), 'networkpolicy_count': pat_usage_networkpolicy_count | default(0) | int, 'hpa_count': pat_usage_hpa_count | default(0) | int, 'pdb_count': pat_usage_pdb_count | default(0) | int, 'ingress_count': pat_usage_ingress_count | default(0) | int, 'gateway_count': pat_usage_gateway_count | default(0) | int}, 'summary': {'cases': {'total': pat_total_count | default(0) | int, 'pass': pat_pass_count | default(0) | int, 'failed': pat_failed_count | default(0) | int, 'na': pat_na_count | default(0) | int}, 'assertions': {'total': pat_assertion_total_count | default(0) | int, 'pass': pat_assertion_pass_count | default(0) | int, 'failed': pat_assertion_failed_count | default(0) | int, 'na': pat_assertion_na_count | default(0) | int}}, 'case_summary': pat_case_summary | default([]), 'results': pat_all_results | default([])} | to_nice_json }}"
   when: inventory_hostname == pat_bootstrap_master
   tags:
     - pat

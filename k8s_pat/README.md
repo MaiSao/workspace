@@ -19,9 +19,12 @@ PDB, Ingress and Gateway objects. Cases use this signal to distinguish
 
 The report has two summaries:
 
-- Case summary: one status per PAT ID, using `FAILED > PASS > N/A` precedence.
-- Assertion summary: every executed target, so host-scope checks show one row
-  per node.
+- Case summary: the cluster-level PAT conclusion, one status per PAT ID. A case
+  is `PASS` only when all applicable assertions pass across the cluster; any
+  failed assertion makes the whole PAT case `FAILED`.
+- Assertion summary: supporting evidence per executed target, so host-scope
+  checks can show one row per node without changing the fact that PAT acceptance
+  is decided at case/cluster level.
 
 For multi-node clusters, `host`, `master`, `worker` and `all` scoped cases run
 against every matching inventory host. Cluster-scoped cases run once through the
@@ -37,8 +40,8 @@ k8s_pat/inventory.ini
 k8s_pat/group_vars/pat.yml
 ```
 
-Use `k8s_master`, `k8s_worker` and `k8s_cluster` group names for PAT
-inventories.
+Use one-level `k8s_master` and `k8s_worker` group names for PAT inventories.
+The playbook targets both groups directly with `k8s_master:k8s_worker`.
 
 Important switches:
 
@@ -51,6 +54,8 @@ Important switches:
 - `pat_enable_chaos`: enables controlled resilience tests. Keep this disabled
   on production unless there is an approved maintenance window.
 - `pat_enable_lab_dr`: enables lab-only disaster recovery evidence cases.
+- `pat_log_case_details`: prints each PAT case ID/title, target, command,
+  return code, status, stdout and stderr in the Ansible run log.
 - `pat_record_catalog_gap_cases`: normally `false` because the profile already
   defines all catalog IDs; turn it on only after adding new IDs to `PAT_CASES.md`
   before implementing their command logic.
@@ -64,6 +69,17 @@ reason and recommendation. Do not mark a case N/A only because it is failing.
 cd k8s_pat
 ansible-playbook -i inventory.ini playbook.yml
 ```
+
+The default console log shows every executed PAT case, the shell command used,
+and the captured stdout/stderr. To make the log quieter:
+
+```shell
+ansible-playbook -i inventory.ini playbook.yml -e pat_log_case_details=false
+```
+
+The verbose run log follows this order: full PAT case execution plan, command
+and stdout/stderr for every executed assertion, cluster-level result for every
+PAT case, then the final pass/failed/N/A summary.
 
 To make the play fail when any PAT case fails:
 

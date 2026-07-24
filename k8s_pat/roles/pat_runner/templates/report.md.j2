@@ -29,8 +29,10 @@ Bootstrap master: `{{ pat_bootstrap_master }}`
 
 ## Summary
 
-Case status uses one row per PAT ID. Assertion status counts per executed target,
-so a host-scope case can create one assertion per node.
+Case status is the cluster-level PAT conclusion, one row per PAT ID. Assertion
+status is supporting evidence per executed target, so a host-scope case can
+create one assertion per node. A case is `PASS` only when all applicable
+assertions pass across the cluster.
 
 ### Cases
 
@@ -46,27 +48,27 @@ so a host-scope case can create one assertion per node.
 
 ## Failed Cases
 
-{% set failed_cases = pat_all_results | selectattr('status', 'equalto', 'FAILED') | list %}
+{% set failed_cases = pat_case_summary | selectattr('status', 'equalto', 'FAILED') | list %}
 {% if failed_cases | length == 0 %}
 No failed cases.
 {% else %}
-| ID | Host | Priority | Mode | Reason | Recommendation |
-|---|---|---|---|---|---|
+| ID | Priority | Mode | Assertions | Failed Targets | Reason | Recommendation |
+|---|---|---|---:|---|---|---|
 {% for item in failed_cases %}
-| {{ item.id }} | {{ item.host }} | {{ item.priority }} | {{ item.mode }} | {{ item.reason | replace('\n', '<br>') }} | {{ item.recommendation | replace('\n', '<br>') }} |
+| {{ item.id }} | {{ item.priority }} | {{ item.mode }} | {{ item.assertion_total }} | {{ item.failed_hosts | join(', ') if (item.failed_hosts | length > 0) else 'none' }} | {{ item.reason | replace('\n', '<br>') }} | {{ item.recommendation | replace('\n', '<br>') }} |
 {% endfor %}
 {% endif %}
 
 ## N/A Cases
 
-{% set na_cases = pat_all_results | selectattr('status', 'equalto', 'N/A') | list %}
+{% set na_cases = pat_case_summary | selectattr('status', 'equalto', 'N/A') | list %}
 {% if na_cases | length == 0 %}
 No N/A cases.
 {% else %}
-| ID | Scope | Priority | Mode | Reason | Recommendation |
-|---|---|---|---|---|---|
+| ID | Priority | Mode | Assertions | Reason | Recommendation |
+|---|---|---|---:|---|---|
 {% for item in na_cases %}
-| {{ item.id }} | {{ item.scope }} | {{ item.priority }} | {{ item.mode }} | {{ item.reason | replace('\n', '<br>') }} | {{ item.recommendation | replace('\n', '<br>') }} |
+| {{ item.id }} | {{ item.priority }} | {{ item.mode }} | {{ item.assertion_total }} | {{ item.reason | replace('\n', '<br>') }} | {{ item.recommendation | replace('\n', '<br>') }} |
 {% endfor %}
 {% endif %}
 
@@ -74,16 +76,54 @@ No N/A cases.
 
 ### Case Summary
 
-| ID | Title | Category | Priority | Mode | Status | Assertions |
-|---|---|---|---|---|---|---:|
+| ID | Title | Category | Priority | Mode | Cluster Status | Assertions | PASS | FAILED | N/A | Reason |
+|---|---|---|---|---|---|---:|---:|---:|---:|---|
 {% for item in pat_case_summary | sort(attribute='id') %}
-| {{ item.id }} | {{ item.title }} | {{ item.category }} | {{ item.priority }} | {{ item.mode }} | {{ item.status }} | {{ item.assertion_total }} |
+| {{ item.id }} | {{ item.title }} | {{ item.category }} | {{ item.priority }} | {{ item.mode }} | {{ item.status }} | {{ item.assertion_total }} | {{ item.assertion_pass }} | {{ item.assertion_failed }} | {{ item.assertion_na }} | {{ item.reason | replace('\n', '<br>') }} |
 {% endfor %}
 
 ### Assertion Details
+
+These rows are evidence only. The PAT decision is the cluster-level status in
+the case summary above.
 
 | ID | Title | Host | Category | Priority | Mode | Status |
 |---|---|---|---|---|---|---|
 {% for item in pat_all_results | sort(attribute='id') %}
 | {{ item.id }} | {{ item.title }} | {{ item.host }} | {{ item.category }} | {{ item.priority }} | {{ item.mode }} | {{ item.status }} |
+{% endfor %}
+
+### Execution Log
+
+{% for item in pat_all_results | sort(attribute='id') %}
+#### {{ item.id }} - {{ item.title }} - {{ item.host }} - {{ item.status }}
+
+- Category: `{{ item.category }}`
+- Priority: `{{ item.priority }}`
+- Mode: `{{ item.mode }}`
+- Scope: `{{ item.scope }}`
+- Return code: `{{ item.rc }}`
+- Reason: {{ item.reason | replace('\n', '<br>') }}
+{% if item.recommendation | default('') | length > 0 %}
+- Recommendation: {{ item.recommendation | replace('\n', '<br>') }}
+{% endif %}
+
+Command:
+
+```shell
+{{ item.command | default('') | trim if (item.command | default('') | trim | length > 0) else '# No command executed for this result.' }}
+```
+
+Stdout:
+
+```text
+{{ item.stdout | default('') | trim if (item.stdout | default('') | trim | length > 0) else '<empty>' }}
+```
+
+Stderr:
+
+```text
+{{ item.stderr | default('') | trim if (item.stderr | default('') | trim | length > 0) else '<empty>' }}
+```
+
 {% endfor %}

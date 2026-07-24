@@ -171,7 +171,7 @@
           | default(item)
           | lower
         }}
-  loop: "{{ k8s_cluster_hosts }}"
+  loop: "{{ k8s_inventory_hosts }}"
   loop_control:
     label: "{{ item }}"
   changed_when: false
@@ -200,10 +200,10 @@
 - name: Assert all inventory nodes are Ready
   assert:
     that:
-      - (__checklist_ready_nodes.stdout | int) == (k8s_cluster_hosts | length)
+      - (__checklist_ready_nodes.stdout | int) == (k8s_inventory_hosts | length)
     fail_msg: >-
       Only {{ __checklist_ready_nodes.stdout | int }} of
-      {{ k8s_cluster_hosts | length }} inventory Kubernetes node(s) are Ready.
+      {{ k8s_inventory_hosts | length }} inventory Kubernetes node(s) are Ready.
   when:
     - "'kubeadm' in k8s_install_services"
     - inventory_hostname == k8s_bootstrap_master
@@ -425,7 +425,7 @@
         else (
           k8s_worker_hosts
           if (item.scope | default('all')) == 'worker'
-          else k8s_cluster_hosts
+          else k8s_inventory_hosts
         )
       }}
   changed_when: false

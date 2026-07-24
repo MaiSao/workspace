@@ -1,0 +1,35 @@
+---
+- name: Check etcd job images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ service_image_requirements.etcd_jobs | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - "'etcd_jobs' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Render etcd operation job manifests on bootstrap master
+  loop: "{{ etcd_operation }}"
+  template:
+    src: "{{ item }}"
+    dest: "{{ __bootstrap_dir }}/{{ item | replace('.j2','') }}"
+  when:
+    - "'etcd_jobs' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Apply etcd operation jobs
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply \
+      -f {{ __bootstrap_dir }}/etcd-backup-rotate-cronjob.yaml \
+      -f {{ __bootstrap_dir }}/etcd-defrag.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'etcd_jobs' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]

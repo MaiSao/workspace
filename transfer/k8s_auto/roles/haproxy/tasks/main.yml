@@ -1,0 +1,149 @@
+---
+- name: Stop HAProxy when HA setup is disabled
+  systemd:
+    name: haproxy
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  failed_when: false
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - not (setup_ha | default(true) | bool)
+
+- name: Install HAProxy package on master nodes
+  package:
+    name: haproxy
+    state: present
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Allow HAProxy to connect to Kubernetes API backends
+  shell: |
+    set -Eeuo pipefail
+    setsebool -P haproxy_connect_any=1 || true
+    if command -v semanage >/dev/null 2>&1; then
+      semanage port -a -t http_port_t -p tcp {{ ha_apiserver_port }} || semanage port -m -t http_port_t -p tcp {{ ha_apiserver_port }} || true
+      semanage port -a -t http_port_t -p tcp {{ haproxy_stats_port | default(8404) }} || semanage port -m -t http_port_t -p tcp {{ haproxy_stats_port | default(8404) }} || true
+    fi
+  args:
+    executable: /bin/bash
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Remove stale HAProxy Kubernetes API config fragments
+  loop:
+    - apiserver.cfg
+    - kube-apiserver.cfg
+    - kubernetes.cfg
+  file:
+    path: "{{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }}/{{ item }}"
+    state: absent
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Create HAProxy config fragment directory
+  file:
+    path: "{{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }}"
+    state: directory
+    mode: '0755'
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Check existing HAProxy main config
+  stat:
+    path: /etc/haproxy/haproxy.cfg
+  register: __haproxy_main_config
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Render HAProxy main config when absent
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    mode: '0644'
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+    - not __haproxy_main_config.stat.exists
+
+- name: Remove legacy HAProxy stats socket from main config
+  lineinfile:
+    path: /etc/haproxy/haproxy.cfg
+    regexp: >-
+      ^\s*stats socket /var/lib/haproxy/stats.*$
+    state: absent
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Render HAProxy Kubernetes API config fragment
+  template:
+    src: kubernetes.cfg.j2
+    dest: "{{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }}/{{ haproxy_k8s_fragment_name | default('k8s-apiserver.cfg') }}"
+    mode: '0644'
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Create HAProxy systemd override directory
+  file:
+    path: /etc/systemd/system/haproxy.service.d
+    state: directory
+    mode: '0755'
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Configure HAProxy to load Kubernetes config fragments
+  copy:
+    dest: /etc/systemd/system/haproxy.service.d/kubernetes.conf
+    mode: '0644'
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -f {{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }} -p /run/haproxy.pid
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Validate HAProxy configuration
+  shell: |
+    set -Eeuo pipefail
+    if [[ -d {{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }} ]]; then
+      haproxy -c -f /etc/haproxy/haproxy.cfg -f {{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }}
+    else
+      haproxy -c -f /etc/haproxy/haproxy.cfg
+    fi
+  args:
+    executable: /bin/bash
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool
+
+- name: Start HAProxy Kubernetes API load balancer
+  systemd:
+    name: haproxy
+    state: restarted
+    enabled: true
+    daemon_reload: true
+  when:
+    - "'haproxy' in k8s_install_services"
+    - "'k8s_master' in group_names"
+    - setup_ha | default(true) | bool

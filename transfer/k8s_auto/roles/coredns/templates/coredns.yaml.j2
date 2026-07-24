@@ -1,0 +1,74 @@
+---
+# Update coredns configmap
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: coredns
+  namespace: kube-system
+data:
+  Corefile: |
+    .:53 {
+        log
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        kubernetes {{ networking_dnsDomain }} in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           endpoint_pod_names
+           ttl 30
+        }
+        prometheus :9153
+        cache 30
+        loop
+        reload
+        loadbalance
+    }
+
+---
+# Kube dns node port
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    k8s-app: kube-dns
+  name: kube-dns-node-port
+  namespace: kube-system
+spec:
+  ports:
+  - name: dns
+    nodePort: 8853
+    port: 53
+    protocol: UDP
+    targetPort: 53
+  - name: dns-tcp
+    nodePort: 8853
+    port: 53
+    protocol: TCP
+    targetPort: 53
+  selector:
+    k8s-app: kube-dns
+  sessionAffinity: None
+  type: NodePort
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coredns-metrics
+  namespace: kube-system
+  labels:
+    k8s-app: kube-dns
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "9153"
+spec:
+  selector:
+    k8s-app: kube-dns
+  ports:
+    - name: metrics
+      port: 9153
+      protocol: TCP
+      targetPort: 9153

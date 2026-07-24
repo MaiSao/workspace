@@ -1,0 +1,38 @@
+---
+- name: Check kubelet CSR approver images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ service_image_requirements.kubelet_csr_approver | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - "'kubelet_csr_approver' in k8s_install_services"
+    - kubelet_serverTLSBootstrap | default(false) | bool
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Render kubelet CSR approver manifest on bootstrap master
+  template:
+    src: kubelet-csr-approver.yaml.j2
+    dest: "{{ __bootstrap_dir }}/kubelet-csr-approver.yaml"
+  when:
+    - "'kubelet_csr_approver' in k8s_install_services"
+    - kubelet_serverTLSBootstrap | default(false) | bool
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Apply kubelet CSR approver
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/kubelet-csr-approver.yaml
+    kubectl -n kube-system rollout status deployment/kubelet-csr-approver --timeout=180s
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when:
+    - "'kubelet_csr_approver' in k8s_install_services"
+    - kubelet_serverTLSBootstrap | default(false) | bool
+    - inventory_hostname == groups['k8s_master'][0]

@@ -1,0 +1,29 @@
+! Kubernetes API VIP fragment managed by k8s_auto.
+! Included from /etc/keepalived/keepalived.conf.
+
+vrrp_script {{ keepalived_k8s_vrrp_script_name | default('chk_k8s_apiserver') }} {
+    script "{{ keepalived_k8s_check_script_path | default('/etc/keepalived/check_k8s_apiserver.sh') }}"
+    user {{ keepalived_script_user | default('root') }}
+    interval 3
+    weight -2
+    fall 10
+    rise 2
+}
+
+vrrp_instance {{ keepalived_k8s_vrrp_instance_name | default('K8S_APISERVER_VIP') }} {
+{% set keepalived_node_index = groups['k8s_master'].index(inventory_hostname) %}
+    state {{ 'MASTER' if keepalived_node_index == 0 else 'BACKUP' }}
+    interface {{ interface_k8s }}
+    virtual_router_id {{ __keepalived_vrrp_router_id }}
+    priority {{ (keepalived_priority_base | int) - keepalived_node_index }}
+    authentication {
+        auth_type PASS
+        auth_pass {{ keepalived_auth_pass }}
+    }
+    virtual_ipaddress {
+        {{ k8s_master_ip }}/{{ keepalived_vip_prefix | default(24) }}
+    }
+    track_script {
+        {{ keepalived_k8s_vrrp_script_name | default('chk_k8s_apiserver') }}
+    }
+}

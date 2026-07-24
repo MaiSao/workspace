@@ -12,6 +12,7 @@ pat_case_defaults:
 pat_output_dir: /root/k8s_pat/reports
 pat_report_prefix: k8s-pat
 pat_command_timeout_seconds: 30
+pat_log_case_details: true
 pat_fail_play_on_failed_cases: false
 pat_record_catalog_gap_cases: false
 pat_catalog_case_ids: []

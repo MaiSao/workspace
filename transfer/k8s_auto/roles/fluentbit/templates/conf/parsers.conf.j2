@@ -1,0 +1,161 @@
+[PARSER]
+    Name        pod_info
+    Format      regex
+    Regex \/.*?\/.*?\/.*?\/(?<namespace>.*?)_(?<pod_name>.*?)_(?<pod_id>.*)\/(?<container_name>.*)\/(?<num_log_file>.*).log$
+
+[PARSER]
+    Name ocs.standard
+    Format regex
+    Regex  /(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\.\d{3})\s+(?<package>[^ ]+)\s+\[(?<severity>[^ ]*?)\]\s+\[(?<thread>[^ ]*)\]:\s+msisdn=\[(?<msisdn>[^ ]*?)\]\s+sessionId=\[(?<session_id>[^ ]*?)\](?<message>.*)/
+    Time_Format %Y-%m-%d %H:%M:%S.%L
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+[PARSER]
+    Name ocs.kafka
+    Format regex
+    Regex  /\[(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\,\d{3})\]\s+(?<severity>[^ ].*?)\s+(?<message>.*)/
+    Time_Format %Y-%m-%d %H:%M:%S,%L
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+[PARSER]
+    Name ocs.zookeeper
+    Format regex
+    Regex  /(?<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\,\d{3})\s+\[(?<id>\w+:\d*)\]\s+-\s+(?<severity>[^ ].*?)\s+(?<message>.*)/
+    Time_Format %Y-%m-%d %H:%M:%S,%L
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+
+[PARSER]
+    Name ocs.mano.standard
+    Format regex
+    Regex /(?<timestamp>\d{2}-\d{2}-\d{4}\s\d{2}:\d{2}:\d{2}.\d{3})\s+\[(?<thread>.*?)\]\s+(?<severity>.*?)\s+.\s+\[(?<serviceName>.*?)\]\s+.\s+(?<package>.*?)\s+(?<message>.*)/
+    Time_Format %d-%m-%Y %H:%M:%S.%L
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+
+[PARSER]
+    Name ocs.service_from_path
+    Format regex
+    Regex ^\/.*?\/.*?\/.*?\/(?<cNFName>.*?)\/(?<podId>.*?)\/(?<podName>.*?)\/(?<containerId>.*?)\/.*$
+
+[PARSER]
+    Name mano.standard
+    Format regex
+    Regex /(?<timestamp>\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2}\.\d{3})\s+\[(?<trace_id>[^\]]*)\]\s+\[(?<thread>[^\]]+)\]\s+(?<severity>[A-Z]+)\s+-\s+\[(?<serviceName>[^\]]+)\]\s+-\s+\[?(?<log_type>[A-Z_]+)\]?(?:\s+-\s+|\s+)(?<message>.*)/ 
+    Time_Format %d-%m-%Y %H:%M:%S.%L
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+[PARSER]
+    Name mano.service_from_path
+    Format regex
+    Regex ^\/.*?\/.*?\/(?<objectName>.*?)\/(?<subObjectName>.*?)\/(?<podIP>.*?)\/.*$
+
+[PARSER]
+    Name cri
+    Format regex
+    Regex /(?<timestamp>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<message>.*)/
+    Time_Key  timestamp
+    Time_Keep False
+    Time_Offset +0700
+    Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+[PARSER]
+    Name audit
+    Format json
+    Time_Key requestReceivedTimestamp
+    Time_Offset +0700
+
+[PARSER]
+    Name ocs.siu-parser-01
+    Format regex
+    Regex /SPL_TRC: \[(?<spl>.*)\]\[ (?<timestamp>\w{3}\s+\d{2}\s+\d{1,2}\.\d{1,2}\.\d{1,2}\.\d{1,3}) \]\s+(?<message>.*)/
+    Time_Format  %b %d %H.%M.%S.%L
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+[PARSER]
+    Name ocs.siu-parser-02
+    Format regex
+    Regex /\[\s+(?<timestamp>\w{3}\s+\d{1,2}\s+\d{1,2}\.\d{1,2}\.\d{1,2}\.\d{1,3})\s+\]\s+(?<message>.*)/
+    Time_Format  %b %d %H.%M.%S.%L
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+[PARSER]
+    Name ocs.siu-parser-03
+    Format regex
+    Regex /(?<timestamp>\d{4}\-\d{0,2}\-\d{0,2}\s+\d{0,2}:\d{0,2}:\d{0,2},\d{0,3})\s+(?<message>.*)/
+    Time_Format  %Y-%m-%d %H:%M:%S,%L
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+[PARSER]
+    Name        mongodb
+    Format      regex
+    Regex       /(?<timestamp>[^ ]+)\s+(?<severity>[A-Z])\s+(?<component>\S+)\s+\[(?<context>[^\]]+)\]\s+(?<message>.*)/
+    Time_Key    time
+    Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+    Time_Key timestamp
+    Time_Keep False
+    Time_Offset +0700
+
+[PARSER]
+    Name   kube_container_path
+    Format regex
+    Regex  ^\/var\/log\/containers\/(?<pod_name>[^_]+)_(?<namespace>[^_]+)_(?<container_name_id>.+)\.log$
+
+[PARSER]
+    Name mda-jsonl-parser
+    Format json
+    Time_Key timestamp
+    Time_Offset +0700
+
+[PARSER]
+    Name mda-jsonl-log-path
+    Format regex
+    Regex ^\/.*?\/.*?\/(?<vnfInstanceName>.*?)\/(?<vnfInstanceId>.*?)\/(?<vnfcName>.*?)\/(?<vnfcId>.*?)\/.*$
+
+[PARSER]
+    Name mysql_audit_json
+    Format json
+    Time_Key timestamp
+    Time_Format %Y-%m-%dT%H:%M:%SZ
+
+[PARSER]
+    Name mysql_audit_inner
+    Format json
+    Time_Key timestamp
+    Time_Format %Y-%m-%dT%H:%M:%SZ
+
+[PARSER]
+    Name        mysql_audit_time
+    Format      json
+    Time_Key    timestamp
+    Time_Format %Y-%m-%dT%H:%M:%SZ
+    Time_Keep   Off
+
+[PARSER]
+    Name   mysql_slow_firstline
+    Format regex
+    Regex  ^# Time:
+
+[PARSER]
+    Name        mysql_slow_parser
+    Format      regex
+    Time_Key    timestamp
+    Time_Format %Y-%m-%dT%H:%M:%S.%L
+    Time_Offset +0000
+    Regex  ^# Time: (?<timestamp>[^\n]+)\n# User@Host: (?<user>[^\n]+)\n# Schema: (?<schema>\S+).*?\n# Query_time: (?<query_time>[0-9\.]+)\s+Lock_time:\s+(?<lock_time>[0-9\.]+)\s+Rows_sent:\s+(?<rows_sent>[0-9]+)\s+Rows_examined:\s+(?<rows_examined>[0-9]+).*?\nSET timestamp=(?<ts>[0-9]+);\n(?<query>.*)

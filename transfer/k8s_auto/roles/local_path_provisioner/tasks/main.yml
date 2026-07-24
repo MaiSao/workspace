@@ -1,0 +1,33 @@
+---
+- name: Check Local Path Provisioner images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ extra_service_image_requirements.local_path_provisioner | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+
+- name: Set Local Path Provisioner render directory
+  set_fact:
+    __local_path_render_dir: "{{ __bootstrap_dir | default('/root/k8s_install') }}/local-path-provisioner"
+
+- name: Create Local Path Provisioner render directory
+  file:
+    path: "{{ __local_path_render_dir }}"
+    state: directory
+    recurse: true
+
+- name: Render Local Path Provisioner manifest
+  template:
+    src: local-path-storage.yaml.j2
+    dest: "{{ __local_path_render_dir }}/local-path-storage.yaml"
+
+- name: Apply Local Path Provisioner manifest
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __local_path_render_dir }}/local-path-storage.yaml
+  args:
+    executable: /bin/bash

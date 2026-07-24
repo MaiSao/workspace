@@ -1,0 +1,30 @@
+---
+pat_cases: []
+pat_case_defaults:
+  enabled: true
+  applicable: true
+  scope: cluster
+  priority: P0
+  mode: PROD-RO
+  category: baseline
+  na_reason: ""
+  recommendation: "Review the case and define remediation in the PAT report."
+pat_output_dir: /root/k8s_pat/reports
+pat_report_prefix: k8s-pat
+pat_command_timeout_seconds: 30
+pat_fail_play_on_failed_cases: false
+pat_record_catalog_gap_cases: false
+pat_catalog_case_ids: []
+pat_app_namespace_exclude_regex: '^(default|kube-system|kube-public|kube-node-lease|k8s-pat)$'
+pat_usage_app_namespaces: ""
+pat_usage_pvc_storage_classes: ""
+pat_usage_nad_references: ""
+pat_usage_networkpolicy_count: 0
+pat_usage_hpa_count: 0
+pat_usage_pdb_count: 0
+pat_usage_ingress_count: 0
+pat_usage_gateway_count: 0
+pat_bootstrap_master: "{{ groups.get('k8s_master', []) | first }}"
+pat_master_hosts: "{{ groups.get('k8s_master', []) }}"
+pat_worker_hosts: "{{ groups.get('k8s_worker', []) }}"
+pat_cluster_hosts: "{{ (pat_master_hosts + pat_worker_hosts) | unique | list }}"

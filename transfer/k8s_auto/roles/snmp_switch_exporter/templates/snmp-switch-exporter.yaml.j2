@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: snmp-switch-exporter
+  namespace: kube-system
+  labels:
+    app: snmp-switch-exporter
+spec:
+  selector:
+    matchLabels:
+      app: snmp-switch-exporter
+  template:
+    metadata:
+      labels:
+        app: snmp-switch-exporter
+    spec:
+      hostNetwork: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: Exists
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - effect: NoExecute
+          operator: Exists
+      containers:
+        - name: snmp-switch-exporter
+          image: {{ __registry_prefix }}/{{ snmp_switch_exporter_image }}
+          imagePullPolicy: Always
+          args:
+            - --config.file={{ snmp_switch_exporter.config_file }}
+            - --web.listen-address={{ snmp_switch_exporter.listen_address }}
+          ports:
+            - containerPort: 9216
+              hostPort: 9216
+              name: metrics
+              protocol: TCP
+          resources:
+{{ k8s_resources.snmp_switch_exporter | to_nice_yaml(indent=2) | indent(12, true) }}
+          volumeMounts:
+            - mountPath: /etc/snmp_exporter
+              name: snmp
+              readOnly: true
+      volumes:
+        - name: snmp
+          hostPath:
+            path: /etc/snmp_exporter
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: snmp-switch-exporter-nodeport-svc
+  namespace: kube-system
+spec:
+  ports:
+    - nodePort: 9217
+      port: 9216
+      protocol: TCP
+      targetPort: 9216
+  selector:
+    app: snmp-switch-exporter
+  type: NodePort

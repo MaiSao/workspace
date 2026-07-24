@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: snmp-exporter
+  namespace: kube-system
+  labels:
+    app: snmp-exporter
+spec:
+  selector:
+    matchLabels:
+      app: snmp-exporter
+  template:
+    metadata:
+      labels:
+        app: snmp-exporter
+    spec:
+      hostNetwork: true
+      containers:
+        - name: snmp-exporter
+          image: {{ __registry_prefix }}/{{ snmp_exporter_image }}
+          imagePullPolicy: Always
+          args:
+            - --config.file=/etc/snmp_exporter/snmp.yml
+          ports:
+            - containerPort: 9116
+              hostPort: 9116
+              name: metrics
+              protocol: TCP
+          resources:
+{{ k8s_resources.snmp_exporter | to_nice_yaml(indent=2) | indent(12, true) }}
+          volumeMounts:
+            - mountPath: /etc/snmp_exporter
+              name: snmp-exporter-config
+              readOnly: true
+      volumes:
+        - name: snmp-exporter-config
+          hostPath:
+            path: /etc/snmp_exporter
+            type: Directory

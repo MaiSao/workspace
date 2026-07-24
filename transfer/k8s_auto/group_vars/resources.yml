@@ -1,0 +1,117 @@
+---
+#===============================================================================
+# OPTIONAL RESOURCE SIZING
+# Normal installations can keep these defaults. Adjust only workloads that need
+# different requests or limits for the target hardware.
+#===============================================================================
+# Static pod values are applied by roles/k8s_tuning by editing files under
+# /etc/kubernetes/manifests/. Add-on and CNI values are rendered directly into
+# their manifest templates before kubectl apply. Kubeadm-created workloads such
+# as CoreDNS and kube-proxy are updated by roles/k8s_tuning with kubectl.
+#---------------------------------------------------
+
+k8s_resources:
+  etcd: &k8s_resource_etcd
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { cpu: "2", memory: "4Gi" }
+  kube_apiserver: &k8s_resource_kube_apiserver
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { cpu: "2", memory: "4Gi" }
+  kube_controller_manager: &k8s_resource_kube_controller_manager
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { cpu: "2", memory: "4Gi" }
+  kube_scheduler: &k8s_resource_kube_scheduler
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { cpu: "2", memory: "4Gi" }
+
+  coredns:
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { cpu: "500m", memory: "512Mi" }
+  kube_proxy:
+    requests: { cpu: "50m", memory: "64Mi" }
+    limits: { cpu: "500m", memory: "256Mi" }
+
+  calico_node:
+    requests: { cpu: "100m", memory: "500Mi" }
+    limits: { cpu: "500m", memory: "1Gi" }
+  calico_kube_controllers:
+    requests: { cpu: "50m", memory: "250Mi" }
+    limits: { cpu: "1", memory: "2Gi" }
+  multus:
+    requests: { cpu: "100m", memory: "100Mi" }
+    limits: { cpu: "100m", memory: "200Mi" }
+  multus_install:
+    requests: { cpu: "10m", memory: "15Mi" }
+  whereabouts:
+    requests: { cpu: "100m", memory: "100Mi" }
+    limits: { cpu: "1", memory: "2Gi" }
+  whereabouts_cleaner:
+    requests: { cpu: "100m", memory: "50Mi" }
+    limits: { cpu: "4", memory: "500Mi" }
+  sriov_device_plugin:
+    requests: { cpu: "250m", memory: "40Mi" }
+    limits: { cpu: "1", memory: "200Mi" }
+
+  metrics_server:
+    requests: { cpu: "100m", memory: "250Mi" }
+    limits: { cpu: "500m", memory: "1Gi" }
+  kube_state_metrics:
+    requests: { cpu: "25m", memory: "250Mi" }
+    limits: { cpu: "500m", memory: "500Mi" }
+  kubelet_csr_approver:
+    requests: { cpu: "20m", memory: "64Mi" }
+    limits: { cpu: "200m", memory: "128Mi" }
+  kyverno_pre:
+    requests: { cpu: "10m", memory: "64Mi" }
+    limits: { cpu: "100m", memory: "256Mi" }
+  kyverno_admission_controller:
+    requests: { cpu: "100m", memory: "128Mi" }
+    limits: { memory: "384Mi" }
+  kyverno_controller:
+    requests: { cpu: "100m", memory: "64Mi" }
+    limits: { memory: "128Mi" }
+  cert_exporter:
+    requests: { cpu: "25m", memory: "75Mi" }
+    limits: { cpu: "50m", memory: "150Mi" }
+  ip_pools_exporter:
+    requests: { cpu: "50m", memory: "128Mi" }
+    limits: { cpu: "500m", memory: "512Mi" }
+  snmp_exporter:
+    requests: { cpu: "20m", memory: "64Mi" }
+    limits: { cpu: "200m", memory: "256Mi" }
+  snmp_switch_exporter:
+    requests: { cpu: "20m", memory: "250Mi" }
+    limits: { cpu: "500m", memory: "1Gi" }
+  haproxy_exporter:
+    requests: { cpu: "20m", memory: "64Mi" }
+    limits: { cpu: "200m", memory: "256Mi" }
+  keepalived_exporter:
+    requests: { cpu: "20m", memory: "64Mi" }
+    limits: { cpu: "200m", memory: "256Mi" }
+  fluentbit:
+    requests: { cpu: "1", memory: "50Mi" }
+    limits: { cpu: "2", memory: "4Gi" }
+  etcd_backup:
+    requests: { cpu: "100m", memory: "2Gi" }
+    limits: { cpu: "4", memory: "8Gi" }
+  etcd_defrag:
+    requests: { cpu: "25m", memory: "25Mi" }
+    limits: { cpu: "250m", memory: "250Mi" }
+
+k8s_static_pod_patches:
+  - name: etcd
+    resources: *k8s_resource_etcd
+    args: []
+  - name: kube-apiserver
+    resources: *k8s_resource_kube_apiserver
+    args:
+      - "--profiling=false"
+      - "--kubelet-certificate-authority=/etc/kubernetes/pki/ca.crt"
+  - name: kube-controller-manager
+    resources: *k8s_resource_kube_controller_manager
+    args:
+      - "--profiling=false"
+  - name: kube-scheduler
+    resources: *k8s_resource_kube_scheduler
+    args:
+      - "--profiling=false"

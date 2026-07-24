@@ -1,0 +1,32 @@
+---
+- name: Check metrics-server images before setup
+  command:
+    argv:
+      - crictl
+      - pull
+      - "{{ __registry_prefix }}/{{ item }}"
+  loop: "{{ service_image_requirements.metrics_server | default([]) | flatten | unique | list }}"
+  loop_control:
+    label: "{{ __registry_prefix }}/{{ item }}"
+  changed_when: false
+  when:
+    - "'metrics_server' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Render metrics-server manifest on bootstrap master
+  template:
+    src: metric-server-v0.8.0.yaml.j2
+    dest: "{{ __bootstrap_dir }}/metric-server-v0.8.0.yaml"
+  when:
+    - "'metrics_server' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]
+
+- name: Apply metrics-server
+  shell: |
+    set -Eeuo pipefail
+    kubectl apply -f {{ __bootstrap_dir }}/metric-server-v0.8.0.yaml
+  args:
+    executable: /bin/bash
+  when:
+    - "'metrics_server' in k8s_install_services"
+    - inventory_hostname == groups['k8s_master'][0]

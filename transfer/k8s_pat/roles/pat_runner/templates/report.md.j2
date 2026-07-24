@@ -1,0 +1,89 @@
+# Kubernetes PAT Report
+
+Run ID: `{{ pat_run_id }}`
+
+Generated on: `{{ ansible_date_time.iso8601 }}`
+
+Bootstrap master: `{{ pat_bootstrap_master }}`
+
+## Inventory Topology
+
+| Signal | Value |
+|---|---|
+| Masters | {{ pat_master_hosts | length }}: `{{ pat_master_hosts | join(', ') }}` |
+| Workers | {{ pat_worker_hosts | length }}: `{{ pat_worker_hosts | join(', ') if (pat_worker_hosts | length > 0) else 'none' }}` |
+| Cluster hosts covered by host-scope cases | {{ pat_cluster_hosts | length }} |
+
+## Discovered Usage
+
+| Signal | Value |
+|---|---|
+| Application namespaces | `{{ pat_usage_app_namespaces | default('') if (pat_usage_app_namespaces | default('') | length > 0) else 'none discovered' }}` |
+| PVC StorageClasses | `{{ pat_usage_pvc_storage_classes | default('') if (pat_usage_pvc_storage_classes | default('') | length > 0) else 'none discovered' }}` |
+| NAD references | `{{ pat_usage_nad_references | default('') if (pat_usage_nad_references | default('') | length > 0) else 'none discovered' }}` |
+| NetworkPolicies | {{ pat_usage_networkpolicy_count | default(0) }} |
+| HPAs | {{ pat_usage_hpa_count | default(0) }} |
+| PDBs | {{ pat_usage_pdb_count | default(0) }} |
+| Ingresses | {{ pat_usage_ingress_count | default(0) }} |
+| Gateways | {{ pat_usage_gateway_count | default(0) }} |
+
+## Summary
+
+Case status uses one row per PAT ID. Assertion status counts per executed target,
+so a host-scope case can create one assertion per node.
+
+### Cases
+
+| Total | PASS | FAILED | N/A |
+|---:|---:|---:|---:|
+| {{ pat_total_count }} | {{ pat_pass_count }} | {{ pat_failed_count }} | {{ pat_na_count }} |
+
+### Assertions
+
+| Total | PASS | FAILED | N/A |
+|---:|---:|---:|---:|
+| {{ pat_assertion_total_count }} | {{ pat_assertion_pass_count }} | {{ pat_assertion_failed_count }} | {{ pat_assertion_na_count }} |
+
+## Failed Cases
+
+{% set failed_cases = pat_all_results | selectattr('status', 'equalto', 'FAILED') | list %}
+{% if failed_cases | length == 0 %}
+No failed cases.
+{% else %}
+| ID | Host | Priority | Mode | Reason | Recommendation |
+|---|---|---|---|---|---|
+{% for item in failed_cases %}
+| {{ item.id }} | {{ item.host }} | {{ item.priority }} | {{ item.mode }} | {{ item.reason | replace('\n', '<br>') }} | {{ item.recommendation | replace('\n', '<br>') }} |
+{% endfor %}
+{% endif %}
+
+## N/A Cases
+
+{% set na_cases = pat_all_results | selectattr('status', 'equalto', 'N/A') | list %}
+{% if na_cases | length == 0 %}
+No N/A cases.
+{% else %}
+| ID | Scope | Priority | Mode | Reason | Recommendation |
+|---|---|---|---|---|---|
+{% for item in na_cases %}
+| {{ item.id }} | {{ item.scope }} | {{ item.priority }} | {{ item.mode }} | {{ item.reason | replace('\n', '<br>') }} | {{ item.recommendation | replace('\n', '<br>') }} |
+{% endfor %}
+{% endif %}
+
+## All Results
+
+### Case Summary
+
+| ID | Title | Category | Priority | Mode | Status | Assertions |
+|---|---|---|---|---|---|---:|
+{% for item in pat_case_summary | sort(attribute='id') %}
+| {{ item.id }} | {{ item.title }} | {{ item.category }} | {{ item.priority }} | {{ item.mode }} | {{ item.status }} | {{ item.assertion_total }} |
+{% endfor %}
+
+### Assertion Details
+
+| ID | Title | Host | Category | Priority | Mode | Status |
+|---|---|---|---|---|---|---|
+{% for item in pat_all_results | sort(attribute='id') %}
+| {{ item.id }} | {{ item.title }} | {{ item.host }} | {{ item.category }} | {{ item.priority }} | {{ item.mode }} | {{ item.status }} |
+{% endfor %}

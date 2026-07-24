@@ -1,0 +1,68 @@
+{% raw %}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-pod-resources
+spec:
+  validationFailureAction: Enforce
+  background: true
+
+  rules:
+    - name: require-resources
+      match:
+        any:
+        - resources:
+            kinds:
+              - Pod
+
+      exclude:
+        any:
+        - resources:
+            namespaces:
+              - kube-system
+              - kyverno
+              - kube-public
+              - kube-node-lease
+
+      validate:
+        message: >-
+          Containers and initContainers must define cpu/memory
+          requests and limits.
+
+        foreach:
+
+        - list: "request.object.spec.containers[]"
+          deny:
+            conditions:
+              any:
+              - key: "{{ element.resources.requests.cpu || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ element.resources.requests.memory || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ element.resources.limits.cpu || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ element.resources.limits.memory || '' }}"
+                operator: Equals
+                value: ""
+
+        - list: "request.object.spec.initContainers[] || []"
+          deny:
+            conditions:
+              any:
+              - key: "{{ element.resources.requests.cpu || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ element.resources.requests.memory || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ element.resources.limits.cpu || '' }}"
+                operator: Equals
+                value: ""
+              - key: "{{ element.resources.limits.memory || '' }}"
+                operator: Equals
+                value: ""
+
+{% endraw %}
