@@ -11,7 +11,7 @@
   changed_when: false
   when:
     - "'metrics_server' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Render metrics-server manifest on bootstrap master
   template:
@@ -19,7 +19,7 @@
     dest: "{{ __bootstrap_dir }}/metric-server-v0.8.0.yaml"
   when:
     - "'metrics_server' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply metrics-server
   shell: |
@@ -29,4 +29,4 @@
     executable: /bin/bash
   when:
     - "'metrics_server' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

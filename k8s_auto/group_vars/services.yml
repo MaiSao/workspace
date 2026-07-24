@@ -169,9 +169,9 @@ elasticsearch_cluster_name: es-hcm
 elasticsearch_network_mode: node_ip
 elasticsearch_network_interface: eth0
 
-# Elasticsearch runs on every k8s-master by default. To use selected nodes,
+# Elasticsearch runs on every k8s_master by default. To use selected nodes,
 # set elasticsearch_target_groups: [] and list their inventory aliases in
-# elasticsearch_target_nodes. A target must belong to k8s-master or k8s-worker.
+# elasticsearch_target_nodes. A target must belong to k8s_master or k8s_worker.
 # If its Kubernetes node name differs from the inventory alias/hostname, define
 # k8s_node_name for that host in inventory.ini.
 elasticsearch_node_selector_key: es-role
@@ -180,7 +180,7 @@ elasticsearch_node_selector_value: all
 # manifest apply; pods remain Pending until matching Kubernetes node labels exist.
 elasticsearch_auto_label_nodes: true
 elasticsearch_target_groups:
-  - k8s-master
+  - k8s_master
 elasticsearch_target_nodes: []
 
 elasticsearch_seed_hosts:

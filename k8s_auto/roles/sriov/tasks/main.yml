@@ -12,7 +12,7 @@
   when:
     - multi_network | bool
     - multus_sriov | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Render SR-IOV manifests on bootstrap master
   loop: "{{ sriov_init }}"
@@ -22,7 +22,7 @@
   when:
     - multi_network | bool
     - multus_sriov | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply SR-IOV device plugin and network attachments
   shell: |
@@ -36,4 +36,4 @@
   when:
     - multi_network | bool
     - multus_sriov | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

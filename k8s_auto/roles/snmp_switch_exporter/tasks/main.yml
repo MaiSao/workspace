@@ -11,7 +11,7 @@
   changed_when: false
   when:
     - "'snmp_switch_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Create SNMP switch exporter host config directory on master nodes
   file:
@@ -19,7 +19,7 @@
     state: directory
   when:
     - "'snmp_switch_exporter' in k8s_install_services"
-    - inventory_hostname in groups['k8s-master']
+    - inventory_hostname in groups['k8s_master']
 
 - name: Install SNMP switch exporter module configuration on master nodes
   copy:
@@ -28,7 +28,7 @@
     mode: '0644'
   when:
     - "'snmp_switch_exporter' in k8s_install_services"
-    - inventory_hostname in groups['k8s-master']
+    - inventory_hostname in groups['k8s_master']
 
 - name: Render SNMP switch exporter manifest on bootstrap master
   template:
@@ -36,7 +36,7 @@
     dest: "{{ __bootstrap_dir }}/snmp-switch-exporter.yaml"
   when:
     - "'snmp_switch_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply SNMP switch exporter
   shell: |
@@ -46,4 +46,4 @@
     executable: /bin/bash
   when:
     - "'snmp_switch_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

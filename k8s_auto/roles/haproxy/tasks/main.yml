@@ -8,7 +8,7 @@
   failed_when: false
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - not (setup_ha | default(true) | bool)
 
 - name: Install HAProxy package on master nodes
@@ -17,7 +17,7 @@
     state: present
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Allow HAProxy to connect to Kubernetes API backends
@@ -32,7 +32,7 @@
     executable: /bin/bash
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Remove stale HAProxy Kubernetes API config fragments
@@ -45,7 +45,7 @@
     state: absent
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Create HAProxy config fragment directory
@@ -55,7 +55,7 @@
     mode: '0755'
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Check existing HAProxy main config
@@ -64,7 +64,7 @@
   register: __haproxy_main_config
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Render HAProxy main config when absent
@@ -74,7 +74,7 @@
     mode: '0644'
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
     - not __haproxy_main_config.stat.exists
 
@@ -86,7 +86,7 @@
     state: absent
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Render HAProxy Kubernetes API config fragment
@@ -96,7 +96,7 @@
     mode: '0644'
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Create HAProxy systemd override directory
@@ -106,7 +106,7 @@
     mode: '0755'
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Configure HAProxy to load Kubernetes config fragments
@@ -119,7 +119,7 @@
       ExecStart=/usr/sbin/haproxy -Ws -f /etc/haproxy/haproxy.cfg -f {{ haproxy_k8s_conf_dir | default('/etc/haproxy/conf.d') }} -p /run/haproxy.pid
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Validate HAProxy configuration
@@ -134,7 +134,7 @@
     executable: /bin/bash
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Start HAProxy Kubernetes API load balancer
@@ -145,5 +145,5 @@
     daemon_reload: true
   when:
     - "'haproxy' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool

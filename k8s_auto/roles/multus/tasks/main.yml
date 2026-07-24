@@ -12,7 +12,7 @@
   when:
     - "'multus' in k8s_install_services"
     - multi_network | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Render Multus manifest on bootstrap master
   template:
@@ -21,7 +21,7 @@
   when:
     - "'multus' in k8s_install_services"
     - multi_network | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply Multus CNI
   shell: |
@@ -32,4 +32,4 @@
   when:
     - "'multus' in k8s_install_services"
     - multi_network | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

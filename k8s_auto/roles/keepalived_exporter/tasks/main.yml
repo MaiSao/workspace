@@ -12,7 +12,7 @@
   when:
     - "'keepalived_exporter' in k8s_install_services"
     - setup_ha | default(true) | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Stop legacy Keepalived exporter host service on master nodes
   systemd:
@@ -23,7 +23,7 @@
   failed_when: false
   when:
     - "'keepalived_exporter' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Remove legacy Keepalived exporter systemd unit on master nodes
   file:
@@ -31,14 +31,14 @@
     state: absent
   when:
     - "'keepalived_exporter' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Reload systemd after removing legacy Keepalived exporter unit
   systemd:
     daemon_reload: true
   when:
     - "'keepalived_exporter' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Remove Keepalived exporter DaemonSet when HA setup is disabled
   shell: |
@@ -48,7 +48,7 @@
     executable: /bin/bash
   when:
     - "'keepalived_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
     - not (setup_ha | default(true) | bool)
 
 - name: Create Keepalived exporter manifest directory on bootstrap master
@@ -58,7 +58,7 @@
     mode: '0755'
   when:
     - "'keepalived_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
     - setup_ha | default(true) | bool
 
 - name: Render Keepalived exporter DaemonSet manifest on bootstrap master
@@ -68,7 +68,7 @@
     mode: '0644'
   when:
     - "'keepalived_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
     - setup_ha | default(true) | bool
 
 - name: Recreate old Keepalived exporter DaemonSet when selector format changed
@@ -85,7 +85,7 @@
     executable: /bin/bash
   when:
     - "'keepalived_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
     - setup_ha | default(true) | bool
 
 - name: Apply Keepalived exporter DaemonSet
@@ -96,5 +96,5 @@
     executable: /bin/bash
   when:
     - "'keepalived_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
     - setup_ha | default(true) | bool

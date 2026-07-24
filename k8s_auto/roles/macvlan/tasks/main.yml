@@ -7,7 +7,7 @@
   when:
     - multi_network | bool
     - multus_macvlan | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply macvlan NetworkAttachmentDefinitions
   shell: |
@@ -18,4 +18,4 @@
   when:
     - multi_network | bool
     - multus_macvlan | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

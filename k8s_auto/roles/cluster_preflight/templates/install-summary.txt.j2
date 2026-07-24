@@ -2,10 +2,10 @@ Kubernetes installation summary
 ===============================
 
 Inventory
-  masters    : {{ groups.get('k8s-master', []) | join(', ') }}
-  master IPs : {{ groups.get('k8s-master', []) | map('extract', hostvars, 'k8s_ip') | join(', ') }}
-  workers    : {{ (groups.get('k8s-worker', []) | join(', ')) if (groups.get('k8s-worker', []) | length > 0) else 'none' }}
-  worker IPs : {{ (groups.get('k8s-worker', []) | map('extract', hostvars, 'k8s_ip') | join(', ')) if (groups.get('k8s-worker', []) | length > 0) else 'none' }}
+  masters    : {{ groups.get('k8s_master', []) | join(', ') }}
+  master IPs : {{ groups.get('k8s_master', []) | map('extract', hostvars, 'k8s_ip') | join(', ') }}
+  workers    : {{ (groups.get('k8s_worker', []) | join(', ')) if (groups.get('k8s_worker', []) | length > 0) else 'none' }}
+  worker IPs : {{ (groups.get('k8s_worker', []) | map('extract', hostvars, 'k8s_ip') | join(', ')) if (groups.get('k8s_worker', []) | length > 0) else 'none' }}
 
 Cluster
   version : {{ k8s_version }}
@@ -13,7 +13,7 @@ Cluster
   API     : {{ (k8s_master_ip ~ ':' ~ ha_apiserver_port) if (setup_ha | default(false) | bool) else (localAPIEndpointAddress ~ ':' ~ localAPIEndpointPort) }}
   VIP     : {{ (k8s_master_ip ~ '/' ~ (keepalived_vip_prefix | default(24) | string)) if (setup_ha | default(false) | bool) else 'disabled' }}
   VRRP ID : {{ keepalived_vrrp_router_id | default('auto') }}
-  Priority: {{ (keepalived_priority_base ~ '..' ~ ((keepalived_priority_base | int) - ((groups.get('k8s-master', []) | length) - 1))) if (setup_ha | default(false) | bool) else 'disabled' }}
+  Priority: {{ (keepalived_priority_base ~ '..' ~ ((keepalived_priority_base | int) - ((groups.get('k8s_master', []) | length) - 1))) if (setup_ha | default(false) | bool) else 'disabled' }}
 
 Feature Switches
   common_bootstrap_enabled : {{ common_bootstrap_enabled | default(false) | bool | lower }}

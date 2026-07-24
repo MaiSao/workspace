@@ -9,7 +9,7 @@
   args:
     executable: /bin/bash
   when:
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
     - "'k8s_tuning' in k8s_install_services"
 
 - name: Apply kube-proxy resource requests and limits
@@ -22,5 +22,5 @@
   args:
     executable: /bin/bash
   when:
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
     - "'k8s_tuning' in k8s_install_services"

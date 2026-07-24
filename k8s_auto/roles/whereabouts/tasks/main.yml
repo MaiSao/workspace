@@ -12,7 +12,7 @@
   when:
     - "'whereabouts' in k8s_install_services"
     - multi_network | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Render Whereabouts manifests on bootstrap master
   loop: "{{ whereabouts_init }}"
@@ -22,7 +22,7 @@
   when:
     - "'whereabouts' in k8s_install_services"
     - multi_network | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply Whereabouts IPAM
   shell: |
@@ -36,4 +36,4 @@
   when:
     - "'whereabouts' in k8s_install_services"
     - multi_network | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

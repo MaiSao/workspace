@@ -58,7 +58,7 @@
     - "'common' in k8s_install_services"
     - common_bootstrap_enabled | default(false) | bool
     - __rerun_bootstrap | default(false) | bool
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Check whether kubeadm is installed before reset
   shell: command -v kubeadm
@@ -334,7 +334,7 @@
     state: directory
   when:
     - "'common' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Copy etcd client tools archive to master nodes
   copy:
@@ -343,7 +343,7 @@
     mode: '0644'
   when:
     - "'common' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Ensure tar is installed before extracting etcd client tools
   package:
@@ -351,7 +351,7 @@
     state: present
   when:
     - "'common' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Install etcdctl and etcdutl on master nodes
   shell: |
@@ -367,7 +367,7 @@
     executable: /bin/bash
   when:
     - "'common' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Write etcdctl environment helper on master nodes
   copy:
@@ -381,4 +381,4 @@
       export ETCDCTL_KEY=/etc/kubernetes/pki/etcd/server.key
   when:
     - "'common' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"

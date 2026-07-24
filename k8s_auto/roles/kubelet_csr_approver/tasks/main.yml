@@ -12,7 +12,7 @@
   when:
     - "'kubelet_csr_approver' in k8s_install_services"
     - kubelet_serverTLSBootstrap | default(false) | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Render kubelet CSR approver manifest on bootstrap master
   template:
@@ -21,7 +21,7 @@
   when:
     - "'kubelet_csr_approver' in k8s_install_services"
     - kubelet_serverTLSBootstrap | default(false) | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply kubelet CSR approver
   shell: |
@@ -35,4 +35,4 @@
   when:
     - "'kubelet_csr_approver' in k8s_install_services"
     - kubelet_serverTLSBootstrap | default(false) | bool
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

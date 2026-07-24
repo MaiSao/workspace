@@ -7,12 +7,12 @@
   failed_when: false
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - not (setup_ha | default(true) | bool)
 
 - name: Set Keepalived runtime facts
   set_fact:
-    __keepalived_bootstrap_master: "{{ groups['k8s-master'][0] }}"
+    __keepalived_bootstrap_master: "{{ groups['k8s_master'][0] }}"
     __keepalived_vrrp_router_id_setting: "{{ keepalived_vrrp_router_id | default('auto') | string | lower }}"
     __keepalived_vrrp_router_id_state_file: "{{ __bootstrap_dir }}/state/keepalived_vrrp_router_id"
   when:
@@ -24,7 +24,7 @@
       - __keepalived_vrrp_router_id_setting == 'auto' or ((keepalived_vrrp_router_id | string | regex_search('^([1-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])$')) is not none)
       - (keepalived_vip_prefix | default(24) | int >= 1) and (keepalived_vip_prefix | default(24) | int <= 32)
       - "'/' not in (k8s_master_ip | string)"
-      - (keepalived_priority_base | int) >= (groups['k8s-master'] | length)
+      - (keepalived_priority_base | int) >= (groups['k8s_master'] | length)
       - (keepalived_priority_base | int) <= 254
     fail_msg: >-
       Invalid Keepalived VRRP settings. keepalived_vrrp_router_id must be
@@ -86,7 +86,7 @@
 - name: Share generated Keepalived VRRP router ID with master nodes
   set_fact:
     __keepalived_vrrp_router_id: "{{ __keepalived_vrrp_router_id_slurp.content | b64decode | trim | int }}"
-  loop: "{{ groups['k8s-master'] }}"
+  loop: "{{ groups['k8s_master'] }}"
   delegate_to: "{{ item }}"
   delegate_facts: true
   run_once: true
@@ -98,7 +98,7 @@
 - name: Share configured Keepalived VRRP router ID with master nodes
   set_fact:
     __keepalived_vrrp_router_id: "{{ keepalived_vrrp_router_id | int }}"
-  loop: "{{ groups['k8s-master'] }}"
+  loop: "{{ groups['k8s_master'] }}"
   delegate_to: "{{ item }}"
   delegate_facts: true
   run_once: true
@@ -115,7 +115,7 @@
     fail_msg: "Effective Keepalived VRRP router ID must be from 1 to 255."
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Install Keepalived package on master nodes
@@ -124,7 +124,7 @@
     state: present
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Create Keepalived config fragment directory
@@ -134,7 +134,7 @@
     mode: '0755'
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Check existing Keepalived main config
@@ -143,7 +143,7 @@
   register: __keepalived_main_config
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Read existing Keepalived main config
@@ -152,7 +152,7 @@
   register: __keepalived_main_config_slurp
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
     - __keepalived_main_config.stat.exists
 
@@ -168,7 +168,7 @@
       }}
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
     - __keepalived_main_config.stat.exists
 
@@ -182,7 +182,7 @@
       to avoid duplicate VRRP/VIP definitions.
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
     - __keepalived_legacy_k8s_auto_main_config | default(false) | bool
 
@@ -204,7 +204,7 @@
       include {{ keepalived_conf_dir | default('/etc/keepalived/conf.d') }}/*.conf
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
     - not __keepalived_main_config.stat.exists or (__keepalived_legacy_k8s_auto_main_config | default(false) | bool)
 
@@ -216,7 +216,7 @@
     state: present
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
     - __keepalived_main_config.stat.exists
     - not (__keepalived_legacy_k8s_auto_main_config | default(false) | bool)
@@ -227,7 +227,7 @@
     state: absent
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Render Keepalived Kubernetes API VIP fragment
@@ -237,7 +237,7 @@
     mode: '0644'
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Render Keepalived Kubernetes API health check
@@ -247,7 +247,7 @@
     mode: '0755'
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Validate Keepalived configuration
@@ -260,7 +260,7 @@
   changed_when: false
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool
 
 - name: Start Keepalived VIP service
@@ -270,5 +270,5 @@
     enabled: true
   when:
     - "'keepalived' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
     - setup_ha | default(true) | bool

@@ -25,7 +25,7 @@
 - name: Build Elasticsearch eligible node list
   set_fact:
     __elasticsearch_target_hosts: "{{ elasticsearch_target_hosts | default([]) }}"
-    __elasticsearch_inventory_hosts: "{{ ((groups['k8s-master'] | default([])) + (groups['k8s-worker'] | default([]))) | unique | list }}"
+    __elasticsearch_inventory_hosts: "{{ ((groups['k8s_master'] | default([])) + (groups['k8s_worker'] | default([]))) | unique | list }}"
     __elasticsearch_invalid_target_groups: "{{ (elasticsearch_target_groups | default([])) | difference(groups.keys() | list) | list }}"
 
 - name: Resolve Elasticsearch valid and invalid target hosts
@@ -45,8 +45,8 @@
 - name: Warn about invalid Elasticsearch target hosts
   debug:
     msg: >-
-      WARNING: Elasticsearch target host(s) are not present in k8s-master or
-      k8s-worker inventory groups: {{ __elasticsearch_invalid_target_hosts | join(', ') }}.
+      WARNING: Elasticsearch target host(s) are not present in k8s_master or
+      k8s_worker inventory groups: {{ __elasticsearch_invalid_target_hosts | join(', ') }}.
       They will be skipped for auto-label. The role will continue and apply
       manifests; pods may remain Pending until Kubernetes nodes are labeled
       with {{ elasticsearch_node_selector_key | default('es-role') }}={{ elasticsearch_node_selector_value | default('all') }}.

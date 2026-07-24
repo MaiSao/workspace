@@ -54,7 +54,7 @@ keepalived_auth_pass: "3333"
 keepalived_vip_prefix: 24
 # auto generates one persistent value for the cluster; alternatively use 1-255.
 keepalived_vrrp_router_id: auto
-# The first k8s-master uses this priority; every following master decrements by
+# The first k8s_master uses this priority; every following master decrements by
 # one, regardless of cluster size. Keep below 255 because 255 is reserved for
 # the VRRP address owner. An odd control-plane count is recommended for etcd.
 keepalived_priority_base: 200
@@ -202,8 +202,8 @@ os_repositories:
 # DERIVED VALUES
 # These are calculated from operator settings and normally do not need edits.
 #===============================================================================
-k8s_master_hosts: "{{ groups.get('k8s-master', []) }}"
-k8s_worker_hosts: "{{ groups.get('k8s-worker', []) }}"
+k8s_master_hosts: "{{ groups.get('k8s_master', []) }}"
+k8s_worker_hosts: "{{ groups.get('k8s_worker', []) }}"
 k8s_cluster_hosts: "{{ (k8s_master_hosts + k8s_worker_hosts) | unique | list }}"
 k8s_bootstrap_master: "{{ k8s_master_hosts | first }}"
 localAPIEndpointAddress: "{{ hostvars[k8s_bootstrap_master]['k8s_ip'] }}"

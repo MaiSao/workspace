@@ -1,6 +1,6 @@
 ---
 - name: Check Kubernetes cluster
-  hosts: k8s-master, k8s-worker
+  hosts: k8s_cluster
   gather_facts: true
   vars_files:
     - group_vars/checklist.yml

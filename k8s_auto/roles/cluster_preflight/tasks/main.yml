@@ -6,8 +6,8 @@
       - (k8s_master_hosts | intersect(k8s_worker_hosts) | length) == 0
       - k8s_cluster_hosts | length == ((k8s_master_hosts | length) + (k8s_worker_hosts | length))
     fail_msg: >-
-      Inventory must contain at least one k8s-master, and a host cannot belong
-      to both k8s-master and k8s-worker.
+      Inventory must contain at least one k8s_master, and a host cannot belong
+      to both k8s_master and k8s_worker.
     success_msg: >-
       Kubernetes inventory contains {{ k8s_master_hosts | length }} master(s)
       and {{ k8s_worker_hosts | length }} worker(s).
@@ -102,7 +102,7 @@
         or (master_hybrid | default(false) | bool)
     fail_msg: >-
       Elasticsearch requires local_path_provisioner and at least one valid
-      target from k8s-master/k8s-worker. Unknown groups or inventory hosts are
+      target from k8s_master/k8s_worker. Unknown groups or inventory hosts are
       not accepted. elasticsearch_network_mode must be node_ip or interface.
       When target nodes include a master, master_hybrid must be true so
       Elasticsearch pods can be scheduled there.

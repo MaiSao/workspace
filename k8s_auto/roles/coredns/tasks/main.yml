@@ -5,7 +5,7 @@
     dest: "{{ __bootstrap_dir }}/coredns.yaml"
   when:
     - "'coredns' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply CoreDNS configuration
   shell: |
@@ -16,4 +16,4 @@
     executable: /bin/bash
   when:
     - "'coredns' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

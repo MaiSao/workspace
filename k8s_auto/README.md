@@ -23,17 +23,17 @@ Default behavior is still a full install. You only need to change service variab
 
 ## 3. Prepare Ansible Inventory
 
-The playbook expects `k8s-master` and `k8s-worker` groups. Use a stable inventory alias for each node, set its SSH management address with `ansible_host`, and explicitly set the address used by Kubernetes with `k8s_ip`. These addresses may be on different networks. Root access is required on all Kubernetes nodes.
+The playbook expects `k8s_master` and `k8s_worker` groups. Use a stable inventory alias for each node, set its SSH management address with `ansible_host`, and explicitly set the address used by Kubernetes with `k8s_ip`. These addresses may be on different networks. Root access is required on all Kubernetes nodes.
 
 ```ini
-[k8s-master]
+[k8s_master]
 master01 ansible_host=10.10.0.7 k8s_ip=1.255.0.7 ansible_ssh_user=root ansible_ssh_pass=myk8snow
 
-[k8s-worker]
+[k8s_worker]
 worker01 ansible_host=10.10.0.8 k8s_ip=1.255.0.8 ansible_ssh_user=root ansible_ssh_pass=myk8snow
 ```
 
-The order of hosts in `k8s-master` defines Keepalived preference. The first
+The order of hosts in `k8s_master` defines Keepalived preference. The first
 master starts at `keepalived_priority_base`; each following master decrements
 by one for any supported master count. Use an odd control-plane count such as
 1, 3, 5, or 7 for etcd quorum.

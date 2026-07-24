@@ -11,7 +11,7 @@ vrrp_script {{ keepalived_k8s_vrrp_script_name | default('chk_k8s_apiserver') }}
 }
 
 vrrp_instance {{ keepalived_k8s_vrrp_instance_name | default('K8S_APISERVER_VIP') }} {
-{% set keepalived_node_index = groups['k8s-master'].index(inventory_hostname) %}
+{% set keepalived_node_index = groups['k8s_master'].index(inventory_hostname) %}
     state {{ 'MASTER' if keepalived_node_index == 0 else 'BACKUP' }}
     interface {{ interface_k8s }}
     virtual_router_id {{ __keepalived_vrrp_router_id }}

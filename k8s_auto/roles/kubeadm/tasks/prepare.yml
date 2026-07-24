@@ -8,7 +8,7 @@
     executable: /bin/bash
   when: >
     'kubeadm' in k8s_install_services
-    and 'k8s-master' in group_names
+    and 'k8s_master' in group_names
 
 - name: Render Kubernetes audit policy manifest
   template:
@@ -16,7 +16,7 @@
     dest: /etc/kubernetes/audit-policy.yaml
   when: >
     'kubeadm' in k8s_install_services
-    and 'k8s-master' in group_names
+    and 'k8s_master' in group_names
 
 - name: Mark node as Kubernetes control-plane candidate
   copy:
@@ -25,7 +25,7 @@
     mode: '0644'
   when:
     - "'kubeadm' in k8s_install_services"
-    - "'k8s-master' in group_names"
+    - "'k8s_master' in group_names"
 
 - name: Render kubeadm configuration files on bootstrap master
   loop: "{{ kubeadm_init }}"
@@ -34,4 +34,4 @@
     dest: "{{ __bootstrap_dir }}/{{ item | replace('.j2','') }}"
   when: >
     'kubeadm' in k8s_install_services
-    and inventory_hostname == groups['k8s-master'][0]
+    and inventory_hostname == groups['k8s_master'][0]

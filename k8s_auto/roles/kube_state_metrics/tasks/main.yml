@@ -11,7 +11,7 @@
   changed_when: false
   when:
     - "'kube_state_metrics' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Render kube-state-metrics manifest on bootstrap master
   template:
@@ -19,7 +19,7 @@
     dest: "{{ __bootstrap_dir }}/kube-state-metrics.yaml"
   when:
     - "'kube_state_metrics' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply kube-state-metrics
   shell: |
@@ -29,4 +29,4 @@
     executable: /bin/bash
   when:
     - "'kube_state_metrics' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

@@ -1,6 +1,6 @@
 ---
 - name: Install Kubernetes cluster
-  hosts: k8s-master, k8s-worker
+  hosts: k8s_cluster
   gather_facts: true
   vars_files:
     - group_vars/all.yml
@@ -114,19 +114,19 @@
     - role: fluentbit
       when:
         - "'fluentbit' in k8s_install_extra_services"
-        - inventory_hostname == groups['k8s-master'][0]
+        - inventory_hostname == groups['k8s_master'][0]
       tags: [extra_services, fluentbit]
 
     - role: local_path_provisioner
       when:
         - "'local_path_provisioner' in k8s_install_extra_services"
-        - inventory_hostname == groups['k8s-master'][0]
+        - inventory_hostname == groups['k8s_master'][0]
       tags: [extra_services, local_path_provisioner]
 
     - role: elasticsearch
       when:
         - "'elasticsearch' in k8s_install_extra_services"
-        - inventory_hostname == groups['k8s-master'][0]
+        - inventory_hostname == groups['k8s_master'][0]
       tags: [extra_services, elasticsearch]
 
     # Post-install tuning must run last.

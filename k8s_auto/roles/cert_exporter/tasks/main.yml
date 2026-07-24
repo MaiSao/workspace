@@ -11,7 +11,7 @@
   changed_when: false
   when:
     - "'cert_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Render cert-exporter manifest on bootstrap master
   template:
@@ -19,7 +19,7 @@
     dest: "{{ __bootstrap_dir }}/cert-exporter.yaml"
   when:
     - "'cert_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]
 
 - name: Apply cert-exporter
   shell: |
@@ -29,4 +29,4 @@
     executable: /bin/bash
   when:
     - "'cert_exporter' in k8s_install_services"
-    - inventory_hostname == groups['k8s-master'][0]
+    - inventory_hostname == groups['k8s_master'][0]

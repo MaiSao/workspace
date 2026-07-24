@@ -1,0 +1,8 @@
+---
+- name: Run Kubernetes PAT
+  hosts: k8s_cluster
+  gather_facts: true
+  vars_files:
+    - group_vars/pat.yml
+  roles:
+    - role: pat_runner
